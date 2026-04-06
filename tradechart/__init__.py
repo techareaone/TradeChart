@@ -15,6 +15,19 @@ tc.data(...)            — Fetch raw OHLCV data as a DataFrame.
 tc.export(...)          — Export market data to CSV / JSON / XLSX.
 tc.clear_cache()        — Flush the in-memory data cache.
 
+Ticker groups
+-------------
+``chart()``, ``data()``, and ``export()`` accept a list or tuple of ticker
+symbols in place of a single string.  The library fetches each symbol
+independently and averages their OHLCV values across overlapping dates,
+then renders or returns that averaged series.
+
+>>> tech = ["AAPL", "MSFT", "AMZN"]
+>>> tc.chart(tech, "3mo", "line")   # single line of averaged closes
+
+The variable name does not matter — passing a list is always treated as a
+group regardless of whether the name matches a real ticker symbol.
+
 Example
 -------
 >>> import tradechart as tc
@@ -25,7 +38,7 @@ Example
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 import threading
 
 import pandas as pd
@@ -41,7 +54,7 @@ from tradechart.utils.exceptions import (
     ConfigError,
 )
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"
 __all__ = [
     "terminal", "theme", "watermark", "config",
     "chart", "compare", "data", "export", "clear_cache",
@@ -143,7 +156,7 @@ def config(**kwargs) -> dict:
 # ── Charting ─────────────────────────────────────────────────────────────────
 
 def chart(
-    ticker: str,
+    ticker: Union[str, list, tuple],
     duration: str = "1mo",
     chart_type: str = "candle",
     output_location: Optional[str] = None,
@@ -156,8 +169,17 @@ def chart(
 
     Parameters
     ----------
-    ticker : str
-        Instrument symbol — ``"AAPL"``, ``"BTC-USD"``, ``"EURUSD=X"``.
+    ticker : str | list[str] | tuple[str, ...]
+        Instrument symbol — ``"AAPL"``, ``"BTC-USD"``, ``"EURUSD=X"`` — **or**
+        a list/tuple of symbols to be averaged into a single series, e.g.
+        ``["AAPL", "MSFT", "AMZN"]``.  When a group is supplied every ticker
+        is fetched independently and their OHLCV values are averaged across
+        the overlapping trading dates before rendering.
+
+        *Collision note:* Python resolves the ambiguity through types, not
+        names.  ``"DNUT"`` (a string) is the Krispy Kreme ticker; a variable
+        called ``DNUT`` that holds a list is simply passed as a list — the
+        library checks ``isinstance``, not the variable name.
     duration : str
         ``"1d"`` ``"5d"`` ``"1mo"`` ``"3mo"`` ``"6mo"`` ``"1y"`` ``"2y"``
         ``"5y"`` ``"10y"`` ``"max"``
@@ -218,24 +240,31 @@ def compare(
     )
 
 
-def data(ticker: str, duration: str = "1mo") -> pd.DataFrame:
+def data(
+    ticker: Union[str, list, tuple],
+    duration: str = "1mo",
+) -> pd.DataFrame:
     """Fetch raw OHLCV market data without rendering a chart.
 
     Parameters
     ----------
-    ticker : str
+    ticker : str | list[str] | tuple[str, ...]
+        A single symbol or a group of symbols to average.  See
+        :func:`chart` for full details on group behaviour.
     duration : str
 
     Returns
     -------
     pandas.DataFrame
         Columns: Open, High, Low, Close, Volume.  DatetimeIndex.
+        When a group is supplied the DataFrame contains the mean values
+        across all tickers on their overlapping trading dates.
     """
     return _get_engine().fetch_data(ticker, duration)
 
 
 def export(
-    ticker: str,
+    ticker: Union[str, list, tuple],
     duration: str = "1mo",
     fmt: str = "csv",
     output_location: Optional[str] = None,
@@ -245,6 +274,11 @@ def export(
 
     Parameters
     ----------
+    ticker : str | list[str] | tuple[str, ...]
+        A single symbol or a group of symbols to average.  See
+        :func:`chart` for full details on group behaviour.
+        Averaged data is exported with a label such as
+        ``AVG_AAPL_MSFT_AMZN_1mo.csv``.
     fmt : ``"csv"`` | ``"json"`` | ``"xlsx"``
 
     Returns

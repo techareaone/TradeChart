@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Union
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,66 @@ def validate_ticker(ticker: str) -> str:
             "Expected 1–20 alphanumeric characters, with optional '-', '/', '.', '^', '='."
         )
     return cleaned
+
+
+# TickerInput covers a single symbol or a group of symbols to be averaged.
+TickerInput = Union[str, list, tuple]
+
+
+def validate_ticker_input(ticker: TickerInput) -> "str | list[str]":
+    """Validate a single ticker string or a sequence of tickers to be averaged.
+
+    Parameters
+    ----------
+    ticker : str | list | tuple
+        A single symbol such as ``"AAPL"``, or a sequence such as
+        ``["AAPL", "MSFT", "AMZN"]``.  When a sequence is supplied the
+        library fetches each ticker and renders the averaged OHLCV series.
+
+    Returns
+    -------
+    str
+        Normalised symbol when a single ticker is given.
+    list[str]
+        List of normalised symbols when a group is given.
+
+    Notes
+    -----
+    Python's type system resolves the apparent naming collision automatically.
+    ``"DNUT"`` (a string literal) refers to the Krispy Kreme ticker; a variable
+    called ``DNUT`` that holds a list is simply passed as a list — the library
+    inspects the *type*, not the name.
+    """
+    if isinstance(ticker, str):
+        return validate_ticker(ticker)
+    if isinstance(ticker, (list, tuple)):
+        items = list(ticker)
+        if len(items) == 0:
+            raise ValueError(
+                "Ticker group must contain at least one symbol. "
+                "Pass a non-empty list, e.g. ['AAPL', 'MSFT']."
+            )
+        validated = []
+        errors = []
+        for item in items:
+            if not isinstance(item, str):
+                errors.append(f"  • {item!r} — expected str, got {type(item).__name__}")
+                continue
+            try:
+                validated.append(validate_ticker(item))
+            except ValueError as exc:
+                errors.append(f"  • {item!r} — {exc}")
+        if errors:
+            raise ValueError(
+                "One or more tickers in the group are invalid:\n"
+                + "\n".join(errors)
+            )
+        return validated
+    raise TypeError(
+        f"ticker must be a str, list, or tuple — got {type(ticker).__name__!r}. "
+        "Pass a single symbol (e.g. 'AAPL') or a group "
+        "(e.g. ['AAPL', 'MSFT', 'AMZN'])."
+    )
 
 
 def validate_duration(duration: str) -> str:

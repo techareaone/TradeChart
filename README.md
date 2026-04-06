@@ -1,4 +1,4 @@
-# TradeChart — Library Edition v1.0.2
+# TradeChart — Library Edition v1.1.0
 
 **Python → Financial Charts**  
 Generate production-quality candlestick, line, area, OHLC, and Heikin-Ashi charts from code.  
@@ -34,6 +34,51 @@ import tradechart as tc
 
 tc.chart("AAPL", "1mo", "candle", indicators=["sma", "bollinger"])
 ```
+
+---
+
+## Ticker Groups — Averaged Series
+
+`tc.chart()`, `tc.data()`, and `tc.export()` accept a **list or tuple of ticker symbols** in addition to a single string. When a group is supplied the library:
+
+1. Fetches each ticker independently (using the normal provider fallback chain).
+2. Aligns all series to their **overlapping trading dates**.
+3. Computes the **column-wise mean** of Open, High, Low, Close, and Volume across all tickers.
+4. Renders or returns that single averaged series, labelled `AVG(AAPL,MSFT,AMZN)`.
+
+```python
+import tradechart as tc
+
+tech = ["AAPL", "MSFT", "AMZN"]
+
+# Chart the average of the three — produces a single line/candle series
+tc.chart(tech, "3mo", "line")
+
+# Fetch the averaged DataFrame for custom analysis
+df = tc.data(tech, "6mo")
+
+# Export the averaged data to CSV
+tc.export(tech, "1y", fmt="csv", output_location="./exports")
+```
+
+### Collision note — variable names vs ticker symbols
+
+There is no ambiguity between a variable named after a real ticker (e.g. `DNUT`) and the ticker string `"DNUT"`. Python's type system handles this automatically:
+
+```python
+# This passes the string "DNUT" → Krispy Kreme ticker
+tc.chart("DNUT", "1mo")
+
+# This passes the list held by the variable DNUT → averaged group
+DNUT = ["AAPL", "MSFT"]
+tc.chart(DNUT, "1mo")   # library sees a list, not the name "DNUT"
+```
+
+The library inspects `isinstance(ticker, (list, tuple))` — it never looks at variable names. Any list or tuple is a group; any string is a single ticker.
+
+### Behaviour on partial failure
+
+If one or more tickers in the group fail to fetch data, they are **skipped with a warning** and the remaining tickers are averaged. If **all** tickers fail, or if the surviving tickers share **no common trading dates**, a `DataFetchError` is raised with a clear explanation.
 
 ---
 
@@ -73,7 +118,7 @@ print(f"Saved → {path}")
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `ticker` | `str` | Yes | — | Instrument symbol. Examples: `"AAPL"`, `"BTC-USD"`, `"EURUSD=X"`, `"^GSPC"`. Max 20 characters; alphanumeric plus `-/.^=`. |
+| `ticker` | `str \| list[str] \| tuple[str, ...]` | Yes | — | Instrument symbol such as `"AAPL"`, `"BTC-USD"`, `"EURUSD=X"`, `"^GSPC"` — **or** a list/tuple of symbols to average (see [Ticker Groups](#ticker-groups--averaged-series)). |
 | `duration` | `str` | No | `"1mo"` | Time span of the chart. See [Durations](#durations). |
 | `chart_type` | `str` | No | `"candle"` | Chart style. One of: `"candle"`, `"line"`, `"ohlc"`, `"area"`, `"heikin_ashi"`. |
 | `output_location` | `str \| None` | No | Current working directory | Directory to save the file. Created automatically if it does not exist. |
@@ -135,7 +180,7 @@ print(df.head())
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `ticker` | `str` | Yes | — | Instrument symbol. |
+| `ticker` | `str \| list[str] \| tuple[str, ...]` | Yes | — | Instrument symbol or a group to average (see [Ticker Groups](#ticker-groups--averaged-series)). |
 | `duration` | `str` | No | `"1mo"` | Time span. See [Durations](#durations). |
 
 **Returns:** `pandas.DataFrame` with a `DatetimeIndex` and columns `Open`, `High`, `Low`, `Close`, `Volume`.  
@@ -160,7 +205,7 @@ path = tc.export("BTC-USD", "3mo", fmt="xlsx")  # requires TradeChart[xlsx]
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `ticker` | `str` | Yes | — | Instrument symbol. |
+| `ticker` | `str \| list[str] \| tuple[str, ...]` | Yes | — | Instrument symbol or a group to average (see [Ticker Groups](#ticker-groups--averaged-series)). |
 | `duration` | `str` | No | `"1mo"` | Time span. See [Durations](#durations). |
 | `fmt` | `str` | No | `"csv"` | Export format: `"csv"`, `"json"`, or `"xlsx"`. Excel export requires `pip install TradeChart[xlsx]`. |
 | `output_location` | `str \| None` | No | Current working directory | Output directory. Created if missing. |
