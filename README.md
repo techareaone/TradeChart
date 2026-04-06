@@ -1,0 +1,376 @@
+# TradeChart — Library Edition v1.0.2
+
+**Python → Financial Charts**  
+Generate production-quality candlestick, line, area, OHLC, and Heikin-Ashi charts from code.  
+Automatic multi-provider data fetching · 7 technical indicators · 3 themes · PNG/SVG/PDF output.
+
+---
+
+## Installation
+
+```bash
+pip install TradeChart
+```
+
+### Optional Extras
+
+| Extra | Installs | Benefit |
+|---|---|---|
+| `TradeChart[tradingview]` | `tvDatafeed` | TradingView as a fallback data provider |
+| `TradeChart[mplfinance]` | `mplfinance` | Higher-quality candlestick rendering |
+| `TradeChart[xlsx]` | `openpyxl` | Excel `.xlsx` export support |
+| `TradeChart[all]` | All of the above | Everything |
+
+```bash
+pip install TradeChart[all]
+```
+
+---
+
+## Quick Start
+
+```python
+import tradechart as tc
+
+tc.chart("AAPL", "1mo", "candle", indicators=["sma", "bollinger"])
+```
+
+---
+
+## API Overview
+
+| Function | Description |
+|---|---|
+| `tc.terminal(mode)` | Set console logging verbosity |
+| `tc.theme(name)` | Set chart colour theme |
+| `tc.watermark(enabled)` | Toggle the TRADELY logo watermark |
+| `tc.config(**kwargs)` | Batch-set multiple global options at once |
+| `tc.chart(...)` | Fetch data and render a chart image |
+| `tc.compare(...)` | Overlay multiple tickers on one chart |
+| `tc.data(...)` | Fetch raw OHLCV data as a DataFrame |
+| `tc.export(...)` | Export market data to CSV / JSON / XLSX |
+| `tc.clear_cache()` | Flush the in-memory data cache |
+
+---
+
+## `tc.chart()` — Render a Chart
+
+Fetches market data and saves a chart image to disk. Returns the `pathlib.Path` of the saved file.
+
+```python
+path = tc.chart(
+    "AAPL",
+    duration="3mo",
+    chart_type="candle",
+    indicators=["sma", "ema", "rsi", "macd"],
+    show_volume=True,
+    fmt="png",
+    output_location="./charts",
+    output_name="apple_q1.png",
+)
+print(f"Saved → {path}")
+```
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ticker` | `str` | Yes | — | Instrument symbol. Examples: `"AAPL"`, `"BTC-USD"`, `"EURUSD=X"`, `"^GSPC"`. Max 20 characters; alphanumeric plus `-/.^=`. |
+| `duration` | `str` | No | `"1mo"` | Time span of the chart. See [Durations](#durations). |
+| `chart_type` | `str` | No | `"candle"` | Chart style. One of: `"candle"`, `"line"`, `"ohlc"`, `"area"`, `"heikin_ashi"`. |
+| `output_location` | `str \| None` | No | Current working directory | Directory to save the file. Created automatically if it does not exist. |
+| `output_name` | `str \| None` | No | `{TICKER}_{duration}_{type}.{fmt}` | Custom filename. Extension is added automatically if omitted. |
+| `fmt` | `str` | No | `"png"` | Output format. One of: `"png"`, `"jpg"`, `"svg"`, `"pdf"`, `"webp"`. |
+| `indicators` | `list[str] \| None` | No | `None` | Technical indicators to overlay or add as sub-panels. See [Indicators](#indicators). |
+| `show_volume` | `bool` | No | `True` | Whether to show a volume sub-panel beneath the price chart. Has no effect on `"line"` and `"area"` chart types. |
+
+### Chart Types
+
+| Value | Description |
+|---|---|
+| `"candle"` | Candlestick chart with open/high/low/close bodies and wicks |
+| `"heikin_ashi"` | Heikin-Ashi smoothed candles (OHLC converted before rendering; source data unchanged) |
+| `"ohlc"` | OHLC bar chart — vertical high/low line with left (open) and right (close) ticks |
+| `"line"` | Close price line chart |
+| `"area"` | Close price line chart with shaded fill beneath the curve |
+
+---
+
+## `tc.compare()` — Multi-Ticker Overlay
+
+Plots multiple tickers on a single chart for performance comparison. Returns the `pathlib.Path` of the saved file.
+
+```python
+path = tc.compare(
+    ["AAPL", "MSFT", "GOOG", "AMZN"],
+    duration="6mo",
+    normalise=True,
+    fmt="png",
+    output_location="./charts",
+    output_name="big_tech_6mo.png",
+)
+```
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `tickers` | `list[str]` | Yes | — | 2–8 ticker symbols to overlay on the same chart. Each is fetched independently using the provider fallback chain. |
+| `duration` | `str` | No | `"1mo"` | Shared time span applied to every ticker. See [Durations](#durations). |
+| `normalise` | `bool` | No | `True` | `True` — plot percentage change from the first bar of the period (recommended when tickers have different price scales). `False` — plot raw closing prices. |
+| `output_location` | `str \| None` | No | Current working directory | Output directory. Created if missing. |
+| `output_name` | `str \| None` | No | `compare_{tickers}_{duration}.{fmt}` | Custom filename. |
+| `fmt` | `str` | No | `"png"` | Output format: `"png"`, `"jpg"`, `"svg"`, `"pdf"`, `"webp"`. |
+
+---
+
+## `tc.data()` — Fetch Raw OHLCV Data
+
+Fetches market data and returns it as a `pandas.DataFrame` without rendering any chart. Useful for further analysis or custom plotting.
+
+```python
+df = tc.data("TSLA", "3mo")
+print(df.head())
+#            Open    High     Low   Close      Volume
+# Date
+# 2024-01-02  248.5  251.3  245.0  249.8  120000000
+# ...
+```
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ticker` | `str` | Yes | — | Instrument symbol. |
+| `duration` | `str` | No | `"1mo"` | Time span. See [Durations](#durations). |
+
+**Returns:** `pandas.DataFrame` with a `DatetimeIndex` and columns `Open`, `High`, `Low`, `Close`, `Volume`.  
+Data is cleaned (NaN rows dropped, Volume NaN → 0) and downsampled to a maximum of 2,000 rows.
+
+---
+
+## `tc.export()` — Export Data to File
+
+Fetches market data and writes it to a file. Returns the `pathlib.Path` of the saved file.
+
+```python
+# CSV
+path = tc.export("AAPL", "1y", fmt="csv", output_location="./exports")
+
+# JSON
+path = tc.export("MSFT", "6mo", fmt="json", output_name="msft_6mo.json")
+
+# Excel
+path = tc.export("BTC-USD", "3mo", fmt="xlsx")  # requires TradeChart[xlsx]
+```
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ticker` | `str` | Yes | — | Instrument symbol. |
+| `duration` | `str` | No | `"1mo"` | Time span. See [Durations](#durations). |
+| `fmt` | `str` | No | `"csv"` | Export format: `"csv"`, `"json"`, or `"xlsx"`. Excel export requires `pip install TradeChart[xlsx]`. |
+| `output_location` | `str \| None` | No | Current working directory | Output directory. Created if missing. |
+| `output_name` | `str \| None` | No | `{TICKER}_{duration}.{fmt}` | Custom filename. |
+
+---
+
+## `tc.config()` — Batch Settings
+
+Set multiple global options in a single call. Returns a `dict` snapshot of all current settings.
+
+```python
+tc.config(
+    terminal="full",
+    theme="light",
+    dpi=200,
+    overwrite=True,
+    fig_size=(16, 9),
+    cache_ttl=600,
+    watermark=False,
+)
+```
+
+| Key | Type | Default | Valid values / range | Description |
+|---|---|---|---|---|
+| `terminal` | `str` | `"on_done"` | `"full"`, `"on_done"`, `"none"` | Console logging verbosity. See [Terminal Modes](#terminal-modes). |
+| `theme` | `str` | `"dark"` | `"dark"`, `"light"`, `"classic"` | Chart colour theme. See [Themes](#themes). |
+| `watermark` | `bool` | `True` | `True`, `False` | Show or hide the TRADELY logo in the bottom-left corner of charts. |
+| `overwrite` | `bool` | `False` | `True`, `False` | `False` — append `_1`, `_2`, … to the filename if it already exists. `True` — overwrite the existing file silently. |
+| `dpi` | `int` | `150` | `50`–`600` | Output resolution in dots per inch. Higher values produce larger, sharper files. |
+| `fig_size` | `tuple[int, int]` | `(14, 7)` | Any valid `(width, height)` in inches | Matplotlib figure size. Increase for wide monitors or presentations. |
+| `cache_ttl` | `int` | `300` | Any positive integer (seconds) | How long fetched data is kept in memory. `0` effectively disables caching. |
+
+---
+
+## `tc.terminal()` — Logging Verbosity
+
+```python
+tc.terminal("full")     # Show every step
+tc.terminal("on_done")  # Show summary after completion (default)
+tc.terminal("none")     # Complete silence — no output at all
+```
+
+## Terminal Modes
+
+| Mode | What prints | Best for |
+|---|---|---|
+| `"full"` | Every internal step, provider attempts, row counts, file paths | Debugging and development |
+| `"on_done"` | One-line summary after each operation completes | Normal interactive use |
+| `"none"` | Nothing — completely silent | Production scripts, CI pipelines, bots |
+
+---
+
+## `tc.theme()` — Chart Colour Theme
+
+```python
+tc.theme("dark")     # Default
+tc.theme("light")
+tc.theme("classic")
+```
+
+## Themes
+
+| Name | Background | Candle colours | Spine |
+|---|---|---|---|
+| `"dark"` | `#1e1e2f` (dark navy) | Green `#26a69a` / Red `#ef5350` | Hidden |
+| `"light"` | `#ffffff` (white) | Green `#26a69a` / Red `#ef5350` | Hidden |
+| `"classic"` | `#f5f5dc` (parchment) | Dark green `#2e7d32` / Dark red `#c62828` | Visible |
+
+---
+
+## `tc.watermark()` — Logo Watermark
+
+```python
+tc.watermark(True)   # Enable (default)
+tc.watermark(False)  # Disable
+```
+
+The TRADELY logo is stamped in the bottom-left corner of every chart by default. The logo is downloaded once from the CDN and cached locally at `~/.tradechart/cache/tradely_logo.png` for all subsequent renders.
+
+---
+
+## `tc.clear_cache()` — Flush Data Cache
+
+```python
+tc.clear_cache()
+```
+
+Clears all in-memory cached market data, forcing the next fetch to go to the network. Useful after a TTL has not yet expired but you need fresh data (e.g. during live market hours).
+
+---
+
+## Durations
+
+| Value | Period | Bar Resolution |
+|---|---|---|
+| `"1d"` | 1 day | 5-minute bars |
+| `"5d"` | 5 days | 15-minute bars |
+| `"1mo"` | 1 month | Daily bars |
+| `"3mo"` | 3 months | Daily bars |
+| `"6mo"` | 6 months | Daily bars |
+| `"1y"` | 1 year | Weekly bars |
+| `"2y"` | 2 years | Weekly bars |
+| `"5y"` | 5 years | Weekly bars |
+| `"10y"` | 10 years | Monthly bars |
+| `"max"` | All available history | Monthly bars |
+
+---
+
+## Indicators
+
+Pass any combination as a list to `tc.chart(indicators=[...])`.
+
+| Name | Panel | Default Parameters | Description |
+|---|---|---|---|
+| `"sma"` | Price overlay | Period 20 | Simple Moving Average of the close price |
+| `"ema"` | Price overlay | Period 20 | Exponential Moving Average of the close price |
+| `"bollinger"` | Price overlay | Period 20, 2σ | Bollinger Bands — upper, middle (SMA), and lower band plotted as dashed lines with a shaded band |
+| `"vwap"` | Price overlay | — | Volume-Weighted Average Price — cumulative from the first bar of the dataset |
+| `"rsi"` | Sub-panel (0–100) | Period 14 | Relative Strength Index with overbought (70) and oversold (30) reference lines |
+| `"macd"` | Sub-panel | Fast 12, Slow 26, Signal 9 | MACD line, signal line, and histogram |
+| `"volume"` | Sub-panel | — | Volume bars coloured by bar direction. Equivalent to `show_volume=True` when used as an indicator. |
+
+**Example — multiple indicators:**
+
+```python
+tc.chart(
+    "NVDA",
+    duration="6mo",
+    chart_type="candle",
+    indicators=["ema", "bollinger", "rsi", "macd"],
+    show_volume=True,
+)
+```
+
+---
+
+## Data Providers
+
+TradeChart tries providers in priority order and falls back automatically on failure or empty data.
+
+| Priority | Provider | Requires | Notes |
+|---|---|---|---|
+| 1 | **yfinance** | Included by default | Primary source. Covers stocks, ETFs, indices, crypto, forex. |
+| 2 | **TradingView** | `pip install TradeChart[tradingview]` | Tried if yfinance returns empty or fails. Attempts multiple exchanges automatically (`NASDAQ`, `NYSE`, `AMEX`, `CRYPTO`, `FX`). |
+| 3 | **Stooq** | Nothing — free CSV endpoint | Final fallback. No API key required. Duration mapped to a rolling date range. |
+
+If all three providers fail, a `DataFetchError` is raised with a list of each provider's error message.
+
+---
+
+## Notes
+
+**Caching**  
+Fetched data is cached in-memory for `cache_ttl` seconds (default 300 s / 5 minutes). All subsequent calls with the same ticker and duration within that window are served from cache. Call `tc.clear_cache()` to force a re-fetch, or set `tc.config(cache_ttl=0)` to disable caching entirely.
+
+**File collision handling**  
+By default (`overwrite=False`), TradeChart appends a counter to avoid overwriting existing files: `chart.png` → `chart_1.png` → `chart_2.png`. Set `tc.config(overwrite=True)` to overwrite silently.
+
+**Watermark**  
+The logo PNG is downloaded once from the TRADELY CDN and stored at `~/.tradechart/cache/tradely_logo.png`. Subsequent renders use the local file. Disable with `tc.watermark(False)` or `tc.config(watermark=False)`.
+
+**Thread safety**  
+The global settings singleton and engine initialisation are protected by locks. `tc.chart()` can be called concurrently from multiple threads (e.g. a Discord bot handling simultaneous requests).
+
+**Heikin-Ashi**  
+The `"heikin_ashi"` chart type converts standard OHLC data to Heikin-Ashi candles during rendering only. The cached source data and any DataFrame returned by `tc.data()` are never modified.
+
+**mplfinance**  
+When `mplfinance` is installed (`pip install TradeChart[mplfinance]`), candlestick and Heikin-Ashi charts use it for higher-quality rendering. Otherwise a pure-matplotlib fallback is used automatically — no configuration required.
+
+**Output resolution**  
+Default DPI is 150, producing a ~2100 × 1050 px image at the default figure size. Increase with `tc.config(dpi=300)` for print-quality output.
+
+---
+
+## Error Handling
+
+All TradeChart exceptions inherit from `TradeChartError`.
+
+| Exception | Raised when |
+|---|---|
+| `DataFetchError` | All configured providers fail to return data for the requested ticker/duration |
+| `InvalidTickerError` | The ticker string fails validation (too long, invalid characters) |
+| `RenderError` | Chart rendering fails (e.g. empty dataset after cleaning) |
+| `OutputError` | The chart cannot be saved (e.g. permission denied) |
+| `ConfigError` | An unknown key is passed to `tc.config()` |
+
+```python
+import tradechart as tc
+from tradechart import DataFetchError, RenderError
+
+try:
+    tc.chart("INVALID!!!", "1mo")
+except DataFetchError as e:
+    print(f"Data error: {e}")
+except RenderError as e:
+    print(f"Render error: {e}")
+```
+
+---
+
+## Example Charts
+<img width="2081" height="1039" alt="image" src="https://github.com/user-attachments/assets/b93f79e6-a135-4de8-993d-ee13071fe791" />
+<img width="2081" height="1039" alt="image" src="https://github.com/user-attachments/assets/b0755b35-b21c-4b27-8faa-c57e13892dad" />
+
+---
+
+## Further Details
+
+- Documentation: [doc.tradely.dev](https://doc.tradely.dev)
+- PyPI: [pypi.org/project/TradeChart](https://pypi.org/project/TradeChart/)
+- Source: [github.com/techareaone/TradeChart](https://github.com/techareaone/TradeChart)

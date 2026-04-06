@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "TradeChart"
+version = "1.0.2"
+description = "Production-quality financial chart generator — candlestick, line, area, OHLC, Heikin-Ashi with technical indicators."
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "TRADELY.DEV", email = "dev@tradely.dev"},
+]
+keywords = [
+    "finance", "chart", "candlestick", "stock", "trading",
+    "ohlc", "technical-analysis", "matplotlib", "yfinance",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+    "matplotlib>=3.7",
+    "pandas>=2.0",
+    "yfinance>=0.2.18",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+tradingview = ["tvDatafeed>=2.1"]
+mplfinance = ["mplfinance>=0.12"]
+xlsx = ["openpyxl>=3.1"]
+all = [
+    "tvDatafeed>=2.1",
+    "mplfinance>=0.12",
+    "openpyxl>=3.1",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "build>=1.0",
+    "twine>=5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/techareaone/TradeChart"
+Documentation = "https://doc.tradely.dev"
+Repository = "https://github.com/techareaone/TradeChart"
+
+[tool.setuptools.packages.find]
+include = ["tradechart*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
