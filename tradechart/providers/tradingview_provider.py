@@ -30,10 +30,9 @@ class TradingViewProvider(BaseProvider):
 
     def fetch(self, ticker: str, duration: str) -> MarketData:
         log = get_logger()
-        try:
-            from tvDatafeed import TvDatafeed, Interval
-        except ImportError as exc:
-            raise RuntimeError("tvDatafeed is not installed. Run: pip install tvDatafeed") from exc
+        from tradechart.utils.install import ensure_package
+        ensure_package("tvDatafeed")
+        from tvDatafeed import TvDatafeed, Interval
 
         n_bars, interval_name = _DURATION_MAP.get(duration, (22, "in_daily"))
         interval = getattr(Interval, interval_name, Interval.in_daily)

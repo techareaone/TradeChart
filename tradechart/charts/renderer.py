@@ -196,6 +196,8 @@ class ChartRenderer:
         self, df: pd.DataFrame, meta: MarketData, out: Path,
         fmt: str, theme: Theme, indicators: list[str], show_volume: bool,
     ) -> Path:
+        from tradechart.utils.install import ensure_package
+        ensure_package("mplfinance")
         import mplfinance as mpf
 
         mc = mpf.make_marketcolors(

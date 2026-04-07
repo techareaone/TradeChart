@@ -310,6 +310,8 @@ class Engine:
         elif fmt == "json":
             df.to_json(out_path, orient="index", date_format="iso", indent=2)
         elif fmt == "xlsx":
+            from tradechart.utils.install import ensure_package
+            ensure_package("openpyxl")
             df.to_excel(out_path, engine="openpyxl")
 
         self._log.summary(f"✓ Data exported → {out_path}")
@@ -397,6 +399,8 @@ class Engine:
         the data is unavailable (indices, futures, etc.) map to ``0``, which
         tells the heatmap renderer to fall back to the minimum-cap floor.
         """
+        from tradechart.utils.install import ensure_package
+        ensure_package("yfinance")
         import yfinance as yf
 
         caps: dict[str, float] = {}

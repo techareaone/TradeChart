@@ -25,6 +25,12 @@ from tradechart.charts.themes import get_theme
 from tradechart.charts.watermark import stamp_logo
 from tradechart.utils.exceptions import RenderError
 
+# Fixed gap between tiles in data-coordinate units.
+# The canvas spans [0, fig_aspect] × [0, 1], and since fig_aspect = fw/fh the
+# x and y data units are identical in physical size (both = fh inches/unit).
+# A single constant therefore produces visually uniform gaps on all four sides.
+_TILE_GAP = 0.006
+
 
 # ── Colour map: deep-red → slate-neutral → deep-green ───────────────────────
 
@@ -248,20 +254,14 @@ class HeatmapRenderer:
             price = prices.get(ticker)
             color = _tile_color(pct, vrange)
 
-            # Gap between tiles: 1.5 % of cell dimensions
-            gap_x = (tx1 - tx0) * 0.015
-            gap_y = (ty1 - ty0) * 0.015
-
-            rect = mpatches.FancyBboxPatch(
-                (tx0 + gap_x, ty0 + gap_y),
-                (tx1 - tx0) - 2 * gap_x,
-                (ty1 - ty0) - 2 * gap_y,
-                boxstyle="round,pad=0.005",
+            rect = mpatches.Rectangle(
+                (tx0 + _TILE_GAP, ty0 + _TILE_GAP),
+                (tx1 - tx0) - 2 * _TILE_GAP,
+                (ty1 - ty0) - 2 * _TILE_GAP,
                 facecolor=color,
-                edgecolor=theme.bg_color,
-                linewidth=1.5,
+                edgecolor="none",
+                linewidth=0,
                 zorder=2,
-                transform=ax.transData,
             )
             ax.add_patch(rect)
 

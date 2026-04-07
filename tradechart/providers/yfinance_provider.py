@@ -15,10 +15,9 @@ class YFinanceProvider(BaseProvider):
 
     def fetch(self, ticker: str, duration: str) -> MarketData:
         log = get_logger()
-        try:
-            import yfinance as yf
-        except ImportError as exc:
-            raise RuntimeError("yfinance is not installed. Run: pip install yfinance") from exc
+        from tradechart.utils.install import ensure_package
+        ensure_package("yfinance")
+        import yfinance as yf
 
         period, interval = DURATION_RESOLUTION_MAP.get(duration, ("1mo", "1d"))
         log.detail("yfinance: downloading %s  period=%s  interval=%s", ticker, period, interval)

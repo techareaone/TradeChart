@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TradeChart"
-version = "2.1.0"
+version = "2.1.1"
 description = "Production-quality financial chart generator — candlestick, line, area, OHLC, Heikin-Ashi, performance heatmaps, and sector group charts."
 readme = "README.md"
 license = {text = "Apache-2.0"}
