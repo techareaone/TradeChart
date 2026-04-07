@@ -410,7 +410,7 @@ class Engine:
                 cap = info.get("marketCap") or info.get("market_cap") or 0
                 caps[ticker] = float(cap) if cap else 0.0
                 if caps[ticker] > 0:
-                    self._log.detail("Market cap %s → $%,.0f", ticker, caps[ticker])
+                    self._log.detail("Market cap %s → $%s", ticker, f"{caps[ticker]:,.0f}")
                 else:
                     self._log.detail("Market cap %s → unavailable", ticker)
             except Exception as exc:
