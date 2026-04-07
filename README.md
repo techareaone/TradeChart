@@ -1,4 +1,4 @@
-# TradeChart — Library Edition v2.0.0
+# TradeChart — Library Edition v2.0.1
 
 **Python → Financial Charts**  
 Generate production-quality candlestick, line, area, OHLC, Heikin-Ashi, and performance heatmap charts from code.  
@@ -92,9 +92,11 @@ If one or more tickers in the group fail to fetch data, they are **skipped with 
 | `tc.config(**kwargs)` | Batch-set multiple global options at once |
 | `tc.chart(...)` | Fetch data and render a chart image |
 | `tc.compare(...)` | Overlay multiple tickers on one chart |
+| `tc.heatmap(...)` | Render a performance heatmap for a ticker group |
 | `tc.data(...)` | Fetch raw OHLCV data as a DataFrame |
 | `tc.export(...)` | Export market data to CSV / JSON / XLSX |
 | `tc.clear_cache()` | Flush the in-memory data cache |
+| `tc.SECTOR_GROUPS` | Dict of 14 pre-defined ticker lists (sectors, indices, crypto, …) |
 
 ---
 
@@ -162,6 +164,83 @@ path = tc.compare(
 | `output_location` | `str \| None` | No | Current working directory | Output directory. Created if missing. |
 | `output_name` | `str \| None` | No | `compare_{tickers}_{duration}.{fmt}` | Custom filename. |
 | `fmt` | `str` | No | `"png"` | Output format: `"png"`, `"jpg"`, `"svg"`, `"pdf"`, `"webp"`. |
+
+---
+
+## `tc.heatmap()` — Performance Heatmap
+
+Renders a grid of coloured tiles — one per ticker — where each tile's hue encodes the **percentage change** over the requested duration. Red = loss, green = gain. Designed for sector snapshots and portfolio overviews.
+
+```python
+import tradechart as tc
+
+# Magnificent 7 over the last month
+tc.heatmap(tc.SECTOR_GROUPS["mag7"], "1mo")
+
+# All S&P 500 sector ETFs over 3 months
+tc.heatmap(tc.SECTOR_GROUPS["sp500_etfs"], "3mo")
+
+# Custom list
+tc.heatmap(["AAPL", "MSFT", "NVDA", "GOOGL", "META"], "6mo", fmt="png")
+```
+
+Each tile shows:
+- **Ticker symbol** (bold)
+- **± % change** over the duration
+- **Last closing price**
+
+The colour scale is automatically centred at zero and symmetrically ranged to the largest move in the group. A colourbar legend is included at the bottom of the chart.
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `tickers` | `list[str]` | Yes | — | 2 or more ticker symbols. Use `tc.SECTOR_GROUPS["key"]` or any custom list. |
+| `duration` | `str` | No | `"1mo"` | Time span applied to every ticker. See [Durations](#durations). |
+| `output_location` | `str \| None` | No | Current working directory | Output directory. Created if missing. |
+| `output_name` | `str \| None` | No | `heatmap_{group}_{duration}.{fmt}` | Custom filename. |
+| `fmt` | `str` | No | `"png"` | Output format: `"png"`, `"jpg"`, `"svg"`, `"pdf"`, `"webp"`. |
+
+**Returns:** `pathlib.Path` of the saved heatmap image.
+
+---
+
+## `tc.SECTOR_GROUPS` — Pre-defined Ticker Lists
+
+A dictionary of curated ticker groups ready to pass into `tc.heatmap()`, `tc.compare()`, `tc.chart()`, or `tc.export()`.
+
+```python
+import tradechart as tc
+
+print(list(tc.SECTOR_GROUPS.keys()))
+# ['mag7', 'sp500_etfs', 'tech', 'finance', 'energy', 'healthcare',
+#  'consumer_disc', 'consumer_stap', 'industrials', 'realestate',
+#  'utilities', 'crypto', 'indices', 'commodities']
+
+# Use as a heatmap input
+tc.heatmap(tc.SECTOR_GROUPS["crypto"], "1mo")
+
+# Use as a compare input (max 8 tickers)
+tc.compare(tc.SECTOR_GROUPS["sp500_etfs"][:8], "3mo")
+
+# Use as an averaged chart input
+tc.chart(tc.SECTOR_GROUPS["mag7"], "6mo", "line")
+```
+
+| Key | Tickers |
+|---|---|
+| `"mag7"` | AAPL, MSFT, NVDA, AMZN, GOOGL, META, TSLA |
+| `"sp500_etfs"` | XLK, XLF, XLE, XLV, XLY, XLI, XLB, XLU, XLRE, XLC, XLP |
+| `"tech"` | AAPL, MSFT, NVDA, AMD, INTC, ORCL, CRM, ADBE, QCOM, TXN |
+| `"finance"` | JPM, BAC, GS, MS, WFC, C, BLK, AXP, V, MA |
+| `"energy"` | XOM, CVX, COP, EOG, MPC, VLO, PSX, OXY, HES, SLB |
+| `"healthcare"` | JNJ, LLY, UNH, ABBV, MRK, ABT, TMO, PFE, DHR, BMY |
+| `"consumer_disc"` | AMZN, TSLA, HD, MCD, NKE, SBUX, LOW, TGT, BKNG, GM |
+| `"consumer_stap"` | WMT, PG, KO, PEP, COST, PM, MO, CL, GIS, KHC |
+| `"industrials"` | CAT, HON, UPS, BA, GE, MMM, RTX, LMT, DE, EMR |
+| `"realestate"` | AMT, PLD, EQIX, SPG, CCI, PSA, DLR, O, WELL, AVB |
+| `"utilities"` | NEE, DUK, SO, D, AEP, EXC, SRE, PCG, ED, ETR |
+| `"crypto"` | BTC-USD, ETH-USD, BNB-USD, SOL-USD, ADA-USD, XRP-USD, DOGE-USD, AVAX-USD |
+| `"indices"` | ^GSPC, ^DJI, ^IXIC, ^RUT, ^FTSE, ^N225, ^HSI, ^GDAXI |
+| `"commodities"` | GC=F, SI=F, CL=F, NG=F, HG=F, ZC=F, ZS=F, PL=F |
 
 ---
 
