@@ -244,10 +244,14 @@ class Engine:
         valid_tickers = [t for t in tickers if t in perf]
         provider_str = ", ".join(sorted(set(providers))) if providers else None
 
+        self._log.section("Fetching market caps")
+        market_caps = self._fetch_market_caps(valid_tickers)
+
         result_path = HeatmapRenderer().render(
             tickers=valid_tickers,
             perf=perf,
             prices=prices,
+            market_caps=market_caps,
             label=label,
             duration=duration,
             output_path=out_path,
@@ -385,6 +389,30 @@ class Engine:
             f"({len(avg_df)} overlapping dates)"
         )
         return MarketData(ticker=label, duration=duration, provider="averaged", df=avg_df)
+
+    def _fetch_market_caps(self, tickers: list[str]) -> dict[str, float]:
+        """Return market-cap values for *tickers* via yfinance.
+
+        Returns a dict mapping ticker → market cap in USD.  Tickers for which
+        the data is unavailable (indices, futures, etc.) map to ``0``, which
+        tells the heatmap renderer to fall back to the minimum-cap floor.
+        """
+        import yfinance as yf
+
+        caps: dict[str, float] = {}
+        for ticker in tickers:
+            try:
+                info = yf.Ticker(ticker).info
+                cap = info.get("marketCap") or info.get("market_cap") or 0
+                caps[ticker] = float(cap) if cap else 0.0
+                if caps[ticker] > 0:
+                    self._log.detail("Market cap %s → $%,.0f", ticker, caps[ticker])
+                else:
+                    self._log.detail("Market cap %s → unavailable", ticker)
+            except Exception as exc:
+                self._log.detail("Market cap %s — failed: %s", ticker, exc)
+                caps[ticker] = 0.0
+        return caps
 
     def _safe_path(self, out_dir: Path, filename: str) -> Path:
         """Return a non-colliding output path unless overwrite is enabled."""

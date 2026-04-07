@@ -72,7 +72,7 @@ from tradechart.utils.exceptions import (
     ConfigError,
 )
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"
 __all__ = [
     "terminal", "theme", "watermark", "config",
     "chart", "compare", "heatmap", "data", "export", "clear_cache",

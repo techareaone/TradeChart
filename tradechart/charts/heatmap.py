@@ -1,9 +1,11 @@
 """Financial performance heatmap renderer.
 
-Produces a grid of coloured tiles — one per ticker — where the tile colour
-encodes the percentage change over the requested duration.  Designed to work
-with ticker groups (``tc.SECTOR_GROUPS``) so an entire sector can be visualised
-in a single call.
+Tiles are sized by market capitalisation using a squarified treemap algorithm —
+large-cap stocks occupy more space, exactly like professional tools (Finviz,
+Bloomberg).  Tile colour encodes percentage change over the requested duration.
+
+When market-cap data is unavailable for all tickers (e.g. commodities futures
+or indices) the renderer falls back to an equal-area grid.
 """
 
 from __future__ import annotations
@@ -30,11 +32,11 @@ _HEATMAP_CMAP = mcolors.LinearSegmentedColormap.from_list(
     "tradechart_heatmap",
     [
         "#8b1a1a",  # deep red   (large loss)
-        "#c62828",  # red
+        "#c62828",
         "#ef5350",  # light red
-        "#546e7a",  # slate-grey (neutral / near zero)
+        "#546e7a",  # slate-grey (near zero)
         "#26a69a",  # teal-green
-        "#00897b",  # green
+        "#00897b",
         "#004d40",  # deep green (large gain)
     ],
     N=256,
@@ -44,26 +46,141 @@ _NORM_CACHE: dict[float, mcolors.Normalize] = {}
 
 
 def _tile_color(pct: float, vrange: float) -> str:
-    """Map *pct* to a hex colour centred at zero with ±*vrange* bounds."""
     key = round(vrange, 4)
     if key not in _NORM_CACHE:
         _NORM_CACHE[key] = mcolors.Normalize(vmin=-vrange, vmax=vrange)
-    norm = _NORM_CACHE[key]
-    return mcolors.to_hex(_HEATMAP_CMAP(norm(pct)))
+    return mcolors.to_hex(_HEATMAP_CMAP(_NORM_CACHE[key](pct)))
 
 
-def _font_sizes(ncols: int) -> tuple[int, int, int]:
-    """Return (ticker_fs, pct_fs, price_fs) scaled for the grid width."""
-    if ncols <= 2:
-        return 13, 10, 8
-    if ncols <= 3:
-        return 11, 9, 7
-    if ncols <= 4:
-        return 9, 7, 6
-    if ncols <= 5:
-        return 8, 6, 5
-    return 7, 5, 4
+# ── Squarified treemap ───────────────────────────────────────────────────────
 
+def _worst_aspect(areas: list[float], strip_dim: float) -> float:
+    """Worst tile aspect ratio for a candidate row.
+
+    For a strip of length *strip_dim*, items are arranged along the perpendicular
+    axis.  The strip width = sum(areas) / strip_dim; each item's other dimension
+    = area / strip_width.  Aspect ratio = max(w/h, h/w).
+    """
+    s = sum(areas)
+    if s == 0 or strip_dim == 0:
+        return float("inf")
+    return max(
+        max(strip_dim ** 2 * a / s ** 2, s ** 2 / (strip_dim ** 2 * a))
+        for a in areas
+    )
+
+
+def _squarify_layout(
+    items: list[str],
+    weights: list[float],
+    x0: float, y0: float,
+    x1: float, y1: float,
+) -> list[tuple[str, float, float, float, float]]:
+    """Squarified treemap layout.
+
+    Returns a list of ``(item, x0, y0, x1, y1)`` in the coordinate space
+    [x0..x1] × [y0..y1].  Weights are normalised internally.
+    """
+    results: list[tuple[str, float, float, float, float]] = []
+    _layout(list(items), list(weights), x0, y0, x1, y1, results)
+    return results
+
+
+def _layout(
+    items: list[str],
+    weights: list[float],
+    x0: float, y0: float,
+    x1: float, y1: float,
+    results: list,
+) -> None:
+    if not items:
+        return
+
+    W = x1 - x0
+    H = y1 - y0
+
+    if W <= 0 or H <= 0:
+        return
+
+    if len(items) == 1:
+        results.append((items[0], x0, y0, x1, y1))
+        return
+
+    # Normalise weights to fill W×H
+    total_w = sum(weights)
+    area = W * H
+    normed = [w * area / total_w for w in weights]
+
+    # Strip runs along the shorter dimension to minimise aspect ratios
+    landscape = W >= H
+    strip_dim = W if landscape else H
+
+    # Greedily grow the current row while aspect ratio improves
+    row_items: list[str] = [items[0]]
+    row_normed: list[float] = [normed[0]]
+
+    for i in range(1, len(items)):
+        candidate = row_normed + [normed[i]]
+        if _worst_aspect(candidate, strip_dim) <= _worst_aspect(row_normed, strip_dim):
+            row_items.append(items[i])
+            row_normed.append(normed[i])
+        else:
+            break
+
+    n_row = len(row_items)
+    remaining_items = items[n_row:]
+    remaining_weights = weights[n_row:]
+
+    s = sum(row_normed)
+
+    if landscape:
+        # Horizontal strip: full width W, height h_strip = s / W
+        h_strip = s / W
+        cx = x0
+        for item, a in zip(row_items, row_normed):
+            tile_w = a / h_strip
+            results.append((item, cx, y0, cx + tile_w, y0 + h_strip))
+            cx += tile_w
+        _layout(remaining_items, remaining_weights, x0, y0 + h_strip, x1, y1, results)
+    else:
+        # Vertical strip: full height H, width w_strip = s / H
+        w_strip = s / H
+        cy = y0
+        for item, a in zip(row_items, row_normed):
+            tile_h = a / w_strip
+            results.append((item, x0, cy, x0 + w_strip, cy + tile_h))
+            cy += tile_h
+        _layout(remaining_items, remaining_weights, x0 + w_strip, y0, x1, y1, results)
+
+
+def _equal_grid_layout(
+    items: list[str],
+    x0: float, y0: float,
+    x1: float, y1: float,
+) -> list[tuple[str, float, float, float, float]]:
+    """Fallback equal-area grid when no market-cap data is available."""
+    n = len(items)
+    W = x1 - x0
+    H = y1 - y0
+    # Choose grid proportional to the canvas aspect ratio
+    aspect = W / H if H > 0 else 1.0
+    ncols = max(1, round(math.sqrt(n * aspect)))
+    nrows = math.ceil(n / ncols)
+    cell_w = W / ncols
+    cell_h = H / nrows
+    results = []
+    for i, item in enumerate(items):
+        col = i % ncols
+        row = nrows - 1 - (i // ncols)
+        results.append((
+            item,
+            x0 + col * cell_w, y0 + row * cell_h,
+            x0 + (col + 1) * cell_w, y0 + (row + 1) * cell_h,
+        ))
+    return results
+
+
+# ── Renderer ─────────────────────────────────────────────────────────────────
 
 class HeatmapRenderer:
     """Stateless renderer — call :meth:`render` to produce a heatmap image."""
@@ -71,8 +188,9 @@ class HeatmapRenderer:
     def render(
         self,
         tickers: list[str],
-        perf: dict[str, float],    # ticker → % change over duration
-        prices: dict[str, float],  # ticker → last close price
+        perf: dict[str, float],          # ticker → % change over duration
+        prices: dict[str, float],        # ticker → last close price
+        market_caps: dict[str, float],   # ticker → market cap (0 = unknown)
         label: str,
         duration: str,
         output_path: Path,
@@ -86,80 +204,127 @@ class HeatmapRenderer:
         if not tickers:
             raise RenderError("Cannot render heatmap with no tickers.")
 
-        n = len(tickers)
-        ncols = math.ceil(math.sqrt(n))
-        nrows = math.ceil(n / ncols)
-
-        # Dynamic colour range — symmetrical, at least ±2 %
+        # ── Colour range ──────────────────────────────────────────────────────
         values = [perf.get(t, 0.0) for t in tickers]
         abs_max = max((abs(v) for v in values), default=5.0)
         vrange = max(round(abs_max * 1.15, 1), 2.0)
 
-        fs_ticker, fs_pct, fs_price = _font_sizes(ncols)
+        # ── Layout ───────────────────────────────────────────────────────────
+        # Use figure aspect ratio as the root rectangle so tile aspect ratios
+        # computed in data coordinates match what the viewer sees.
+        fw, fh = settings.fig_size
+        fig_aspect = fw / fh
 
-        fig, ax = plt.subplots(figsize=settings.fig_size)
+        weights = [market_caps.get(t, 0.0) for t in tickers]
+        has_caps = sum(weights) > 0
+
+        if has_caps:
+            # Tickers with unknown cap get the smallest known cap as a floor
+            known = [w for w in weights if w > 0]
+            floor = min(known) * 0.5
+            weights = [w if w > 0 else floor for w in weights]
+            layout = _squarify_layout(tickers, weights, 0.0, 0.0, fig_aspect, 1.0)
+            weight_note = "market-cap weighted"
+        else:
+            layout = _equal_grid_layout(tickers, 0.0, 0.0, fig_aspect, 1.0)
+            weight_note = "equal weight"
+
+        log.detail("Heatmap layout: %s (%d tiles)", weight_note, len(layout))
+
+        # ── Figure ───────────────────────────────────────────────────────────
+        fig, ax = plt.subplots(figsize=(fw, fh))
         fig.patch.set_facecolor(theme.bg_color)
         ax.set_facecolor(theme.bg_color)
-        ax.set_xlim(0, ncols)
-        ax.set_ylim(0, nrows)
+        ax.set_xlim(0, fig_aspect)
+        ax.set_ylim(0, 1.0)
+        ax.set_aspect("auto")
         ax.axis("off")
 
-        for i, ticker in enumerate(tickers):
-            row = nrows - 1 - (i // ncols)
-            col = i % ncols
+        # Pre-compute figure height in typographic points for font sizing
+        fig_h_pt = fh * 72.0
+
+        for ticker, tx0, ty0, tx1, ty1 in layout:
             pct = perf.get(ticker, 0.0)
             price = prices.get(ticker)
             color = _tile_color(pct, vrange)
 
-            # ── Rounded-rectangle tile ──────────────────────────────────────
+            # Gap between tiles: 1.5 % of cell dimensions
+            gap_x = (tx1 - tx0) * 0.015
+            gap_y = (ty1 - ty0) * 0.015
+
             rect = mpatches.FancyBboxPatch(
-                (col + 0.04, row + 0.04), 0.92, 0.92,
-                boxstyle="round,pad=0.03",
+                (tx0 + gap_x, ty0 + gap_y),
+                (tx1 - tx0) - 2 * gap_x,
+                (ty1 - ty0) - 2 * gap_y,
+                boxstyle="round,pad=0.005",
                 facecolor=color,
                 edgecolor=theme.bg_color,
-                linewidth=2.5,
+                linewidth=1.5,
                 zorder=2,
+                transform=ax.transData,
             )
             ax.add_patch(rect)
 
-            cx = col + 0.50
-            cy = row + 0.50
+            # ── Font sizes — scale with tile height in points ─────────────────
+            tile_h_pt = (ty1 - ty0) * fig_h_pt
+            tile_w_pt = (tx1 - tx0) / fig_aspect * fw * 72.0
+            min_dim_pt = min(tile_h_pt, tile_w_pt)
 
-            # ── Text layout (3 rows: ticker / pct / price) ──────────────────
-            has_price = price is not None
-            if has_price:
-                ty, py, pry = cy + 0.17, cy - 0.03, cy - 0.22
+            fs_ticker = max(5, min(15, int(min_dim_pt / 7)))
+            fs_pct    = max(4, min(13, int(min_dim_pt / 9)))
+            fs_price  = max(4, min(11, int(min_dim_pt / 12)))
+
+            show_ticker = tile_h_pt >= 18
+            show_pct    = tile_h_pt >= 32
+            show_price  = tile_h_pt >= 55 and price is not None
+
+            if not show_ticker:
+                continue
+
+            cx = (tx0 + tx1) / 2
+            cy = (ty0 + ty1) / 2
+
+            # Vertically distribute text within the tile
+            if show_price and show_pct:
+                ty_t, ty_p, ty_pr = cy + 0.34 * (ty1 - ty0) * 0.5, cy, cy - 0.34 * (ty1 - ty0) * 0.5
+            elif show_pct:
+                ty_t, ty_p = cy + 0.22 * (ty1 - ty0) * 0.5, cy - 0.18 * (ty1 - ty0) * 0.5
+                ty_pr = None
             else:
-                ty, py = cy + 0.08, cy - 0.11
-                pry = None  # unused
+                ty_t = cy
+                ty_p = ty_pr = None
 
-            ax.text(cx, ty, ticker,
+            ax.text(cx, ty_t, ticker,
                     ha="center", va="center",
                     fontsize=fs_ticker, fontweight="bold",
-                    color="white", zorder=3)
+                    color="white", zorder=3, clip_on=True)
 
-            sign = "+" if pct >= 0 else ""
-            ax.text(cx, py, f"{sign}{pct:.2f}%",
-                    ha="center", va="center",
-                    fontsize=fs_pct, color="white", alpha=0.95, zorder=3)
+            if show_pct and ty_p is not None:
+                sign = "+" if pct >= 0 else ""
+                ax.text(cx, ty_p, f"{sign}{pct:.2f}%",
+                        ha="center", va="center",
+                        fontsize=fs_pct, color="white", alpha=0.92,
+                        zorder=3, clip_on=True)
 
-            if has_price and pry is not None:
+            if show_price and ty_pr is not None:
                 price_str = (
                     f"${price:,.0f}" if price >= 1_000
                     else f"${price:.2f}" if price >= 1
                     else f"${price:.4f}"
                 )
-                ax.text(cx, pry, price_str,
+                ax.text(cx, ty_pr, price_str,
                         ha="center", va="center",
-                        fontsize=fs_price, color="white", alpha=0.75, zorder=3)
+                        fontsize=fs_price, color="white", alpha=0.72,
+                        zorder=3, clip_on=True)
 
-        # ── Title ────────────────────────────────────────────────────────────
+        # ── Title ─────────────────────────────────────────────────────────────
+        subtitle = f"market-cap weighted" if has_caps else "equal weight"
         ax.set_title(
-            f"{label}  •  {duration}  •  Performance Heatmap",
-            color=theme.text_color, fontsize=13, fontweight="bold", pad=14,
+            f"{label}  •  {duration}  •  Performance Heatmap  ({subtitle})",
+            color=theme.text_color, fontsize=12, fontweight="bold", pad=12,
         )
 
-        # ── Colour-bar legend ────────────────────────────────────────────────
+        # ── Colour-bar legend ──────────────────────────────────────────────────
         sm = plt.cm.ScalarMappable(
             cmap=_HEATMAP_CMAP,
             norm=mcolors.Normalize(vmin=-vrange, vmax=vrange),
@@ -167,7 +332,7 @@ class HeatmapRenderer:
         sm.set_array([])
         cbar = fig.colorbar(
             sm, ax=ax, orientation="horizontal",
-            fraction=0.025, pad=0.03, aspect=45,
+            fraction=0.025, pad=0.03, aspect=50,
         )
         cbar.set_label("% Change", color=theme.text_color, fontsize=9)
         cbar.ax.tick_params(colors=theme.text_color, labelsize=8)

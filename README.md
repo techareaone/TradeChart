@@ -1,4 +1,4 @@
-# TradeChart — Library Edition v2.0.1
+# TradeChart — Library Edition v2.1.0
 
 **Python → Financial Charts**  
 Generate production-quality candlestick, line, area, OHLC, Heikin-Ashi, and performance heatmap charts from code.  
@@ -169,7 +169,7 @@ path = tc.compare(
 
 ## `tc.heatmap()` — Performance Heatmap
 
-Renders a grid of coloured tiles — one per ticker — where each tile's hue encodes the **percentage change** over the requested duration. Red = loss, green = gain. Designed for sector snapshots and portfolio overviews.
+Renders a **market-cap weighted treemap** — one tile per ticker — where tile **size** is proportional to market capitalisation and tile **colour** encodes percentage change over the requested duration. Red = loss, green = gain. Designed for sector snapshots and portfolio overviews, matching the style of professional tools like Finviz and Bloomberg.
 
 ```python
 import tradechart as tc
@@ -189,7 +189,7 @@ Each tile shows:
 - **± % change** over the duration
 - **Last closing price**
 
-The colour scale is automatically centred at zero and symmetrically ranged to the largest move in the group. A colourbar legend is included at the bottom of the chart.
+Tile sizes use a **squarified treemap** algorithm to minimise wasted space while keeping aspect ratios close to square. Market-cap data is fetched automatically via yfinance. When market-cap data is unavailable (indices, futures, commodities), the renderer falls back to an equal-area grid automatically. The colour scale is symmetrically ranged to the largest move in the group. A colourbar legend is included.
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
