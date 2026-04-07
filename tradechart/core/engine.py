@@ -143,9 +143,11 @@ class Engine:
         fig.patch.set_facecolor(theme.bg_color)
         ax.set_facecolor(theme.face_color)
 
+        providers: list[str] = []
         for i, ticker in enumerate(tickers):
             self._log.section(f"Fetching {ticker}")
             data = self._fetcher.fetch(ticker, duration)
+            providers.append(data.provider)
             series = data.df["Close"]
             if normalise:
                 series = (series / series.iloc[0] - 1) * 100  # percent change
@@ -168,8 +170,9 @@ class Engine:
         fig.autofmt_xdate(rotation=30)
         fig.tight_layout(pad=1.5)
 
+        provider_str = ", ".join(sorted(set(providers))) if providers else None
         if settings.watermark_enabled:
-            stamp_logo(fig)
+            stamp_logo(fig, provider=provider_str)
 
         out_file = out_path.with_suffix(f".{fmt}")
         fig.savefig(out_file, dpi=settings.dpi,
@@ -179,6 +182,82 @@ class Engine:
         self._log.summary(f"✓ Comparison chart saved → {out_file}")
         self._log.flush_summary()
         return out_file
+
+    # ── tc.heatmap() ─────────────────────────────────────────────────────
+
+    def heatmap(
+        self,
+        tickers: list[str],
+        duration: str = "1mo",
+        output_location: str | None = None,
+        output_name: str | None = None,
+        fmt: str = "png",
+    ) -> Path:
+        from tradechart.charts.heatmap import HeatmapRenderer
+
+        self._log.section("TradeChart — heatmap")
+
+        if not isinstance(tickers, (list, tuple)):
+            raise ValueError("heatmap() requires a list of tickers.")
+        tickers = [validate_ticker(t) for t in tickers]
+        if len(tickers) < 2:
+            raise ValueError("heatmap() requires at least 2 tickers.")
+
+        duration = validate_duration(duration)
+        fmt = validate_format(fmt)
+
+        out_dir = validate_output_path(output_location) if output_location else Path.cwd()
+        label = build_group_label(tickers)
+        filename = output_name or f"heatmap_{sanitize_filename(label)}_{duration}.{fmt}"
+        out_path = self._safe_path(out_dir, filename)
+
+        perf: dict[str, float] = {}
+        prices: dict[str, float] = {}
+        providers: list[str] = []
+        failed: list[str] = []
+
+        for ticker in tickers:
+            self._log.section(f"Fetching {ticker}")
+            try:
+                data = self._fetcher.fetch(ticker, duration)
+                df = data.df
+                last_close = float(df["Close"].iloc[-1])
+                prices[ticker] = last_close
+                if len(df) >= 2:
+                    first_close = float(df["Close"].iloc[0])
+                    perf[ticker] = (last_close / first_close - 1) * 100
+                else:
+                    perf[ticker] = 0.0
+                providers.append(data.provider)
+            except Exception as exc:
+                self._log.detail("Skip %s — %s", ticker, exc)
+                failed.append(ticker)
+
+        if not perf:
+            raise DataFetchError("No ticker data could be fetched for the heatmap.")
+
+        if failed:
+            self._log.detail(
+                "Warning — %d ticker(s) skipped: %s", len(failed), ", ".join(failed)
+            )
+
+        valid_tickers = [t for t in tickers if t in perf]
+        provider_str = ", ".join(sorted(set(providers))) if providers else None
+
+        result_path = HeatmapRenderer().render(
+            tickers=valid_tickers,
+            perf=perf,
+            prices=prices,
+            label=label,
+            duration=duration,
+            output_path=out_path,
+            fmt=fmt,
+            provider=provider_str,
+        )
+
+        self._log.summary(f"✓ Heatmap saved → {result_path}")
+        self._log.flush_summary()
+        return result_path
 
     # ── tc.data() ────────────────────────────────────────────────────────
 

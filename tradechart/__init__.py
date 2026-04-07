@@ -11,12 +11,28 @@ tc.watermark(enabled)   — Toggle the TRADELY logo watermark.
 tc.config(**kwargs)     — Batch-set global options.
 tc.chart(...)           — Fetch data and render a chart.
 tc.compare(...)         — Overlay multiple tickers on one chart.
+tc.heatmap(...)         — Render a performance heatmap for a ticker group.
 tc.data(...)            — Fetch raw OHLCV data as a DataFrame.
 tc.export(...)          — Export market data to CSV / JSON / XLSX.
 tc.clear_cache()        — Flush the in-memory data cache.
 
-Ticker groups
+Sector groups
 -------------
+``tc.SECTOR_GROUPS`` is a dict of pre-defined ticker lists for common market
+segments.  Pass any value directly into ``heatmap()``, ``compare()``,
+``chart()``, or ``export()``:
+
+>>> tc.heatmap(tc.SECTOR_GROUPS["mag7"], "1mo")
+>>> tc.heatmap(tc.SECTOR_GROUPS["sp500_etfs"], "3mo")
+>>> tc.compare(tc.SECTOR_GROUPS["tech"], "6mo")
+
+Available keys: ``"mag7"``, ``"sp500_etfs"``, ``"tech"``, ``"finance"``,
+``"energy"``, ``"healthcare"``, ``"consumer_disc"``, ``"consumer_stap"``,
+``"industrials"``, ``"realestate"``, ``"utilities"``, ``"crypto"``,
+``"indices"``, ``"commodities"``.
+
+Ticker groups (averaging)
+-------------------------
 ``chart()``, ``data()``, and ``export()`` accept a list or tuple of ticker
 symbols in place of a single string.  The library fetches each symbol
 independently and averages their OHLCV values across overlapping dates,
@@ -33,6 +49,7 @@ Example
 >>> import tradechart as tc
 >>> tc.terminal("full")
 >>> tc.chart("AAPL", "1mo", "candle", indicators=["sma", "bollinger"])
+>>> tc.heatmap(tc.SECTOR_GROUPS["mag7"], "3mo")
 """
 
 from __future__ import annotations
@@ -45,6 +62,7 @@ import pandas as pd
 
 from tradechart.config.settings import get_settings
 from tradechart.core.engine import Engine
+from tradechart.data.groups import SECTOR_GROUPS
 from tradechart.utils.exceptions import (
     TradeChartError,
     DataFetchError,
@@ -54,10 +72,11 @@ from tradechart.utils.exceptions import (
     ConfigError,
 )
 
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 __all__ = [
     "terminal", "theme", "watermark", "config",
-    "chart", "compare", "data", "export", "clear_cache",
+    "chart", "compare", "heatmap", "data", "export", "clear_cache",
+    "SECTOR_GROUPS",
 ]
 
 _engine: Engine | None = None
@@ -237,6 +256,50 @@ def compare(
         tickers=tickers, duration=duration,
         output_location=output_location, output_name=output_name,
         fmt=fmt, normalise=normalise,
+    )
+
+
+def heatmap(
+    tickers: list,
+    duration: str = "1mo",
+    output_location: Optional[str] = None,
+    output_name: Optional[str] = None,
+    fmt: str = "png",
+) -> Path:
+    """Render a performance heatmap for a group of tickers.
+
+    Each ticker is represented as a coloured tile whose hue encodes the
+    percentage change over *duration* — red for losses, green for gains.
+    Designed to be used with ``tc.SECTOR_GROUPS`` but accepts any list.
+
+    Parameters
+    ----------
+    tickers : list[str]
+        2 or more ticker symbols, e.g. ``tc.SECTOR_GROUPS["mag7"]``.
+    duration : str
+        Time span shared by all tickers.
+    output_location : str or None
+        Directory. Defaults to cwd; created if missing.
+    output_name : str or None
+        Filename. Defaults to ``heatmap_{group}_{duration}.{fmt}``.
+    fmt : str
+        ``"png"`` ``"jpg"`` ``"svg"`` ``"pdf"`` ``"webp"``
+
+    Returns
+    -------
+    pathlib.Path
+        Absolute path to the saved heatmap image.
+
+    Examples
+    --------
+    >>> tc.heatmap(tc.SECTOR_GROUPS["mag7"], "1mo")
+    >>> tc.heatmap(tc.SECTOR_GROUPS["sp500_etfs"], "3mo", fmt="png")
+    >>> tc.heatmap(["AAPL", "MSFT", "NVDA", "GOOGL"], "6mo")
+    """
+    return _get_engine().heatmap(
+        tickers=tickers, duration=duration,
+        output_location=output_location, output_name=output_name,
+        fmt=fmt,
     )
 
 

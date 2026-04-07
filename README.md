@@ -1,8 +1,8 @@
-# TradeChart — Library Edition v1.1.0
+# TradeChart — Library Edition v2.0.0
 
 **Python → Financial Charts**  
-Generate production-quality candlestick, line, area, OHLC, and Heikin-Ashi charts from code.  
-Automatic multi-provider data fetching · 7 technical indicators · 3 themes · PNG/SVG/PDF output.
+Generate production-quality candlestick, line, area, OHLC, Heikin-Ashi, and performance heatmap charts from code.  
+Automatic multi-provider data fetching · 7 technical indicators · 3 themes · PNG/SVG/PDF output · 14 built-in sector groups.
 
 ---
 
