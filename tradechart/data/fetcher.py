@@ -50,12 +50,24 @@ class DataFetcher:
         self._log = get_logger()
 
     def fetch(self, ticker: str, duration: str) -> MarketData:
+        # 1 — in-memory cache (fastest)
         cached = self._cache.get(ticker, duration)
         if cached is not None:
             self._log.detail("Cache hit for %s/%s", ticker, duration)
             self._log.summary(f"✓ Data loaded from cache ({cached.provider})")
             return cached
 
+        # 2 — persistent disk store (avoids network for already-fetched data)
+        disk_store = get_settings().disk_store
+        if disk_store is not None:
+            disk_data = disk_store.load(ticker, duration)
+            if disk_data is not None:
+                self._log.detail("Disk store hit for %s/%s", ticker, duration)
+                self._log.summary(f"✓ Data loaded from disk store ({len(disk_data.df)} rows)")
+                self._cache.put(disk_data)  # promote to memory cache
+                return disk_data
+
+        # 3 — live provider chain
         errors: list[str] = []
         for provider in self._providers:
             self._log.section(f"Trying provider: {provider.name}")
@@ -68,6 +80,9 @@ class DataFetcher:
                     continue
                 data.clean().downsample()
                 self._cache.put(data)
+                # 4 — persist to disk store for future sessions
+                if disk_store is not None:
+                    disk_store.save(data)
                 self._log.detail("Fetched %d rows from %s", len(data.df), provider.name)
                 self._log.summary(f"✓ Data fetched via {provider.name} ({len(data.df)} rows)")
                 return data

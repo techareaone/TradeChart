@@ -1,8 +1,8 @@
-# TradeChart — Library Edition v2.1.2
+# TradeChart — Library Edition v2.2.0
 
 **Python → Financial Charts**  
 Generate production-quality candlestick, line, area, OHLC, Heikin-Ashi, and performance heatmap charts from code.  
-Automatic multi-provider data fetching · 7 technical indicators · 3 themes · PNG/SVG/PDF output · 14 built-in sector groups.
+Automatic multi-provider data fetching · persistent disk store · 7 technical indicators · 3 themes · PNG/SVG/PDF output · 14 built-in sector groups.
 
 ---
 
@@ -34,6 +34,81 @@ import tradechart as tc
 
 tc.chart("AAPL", "1mo", "candle", indicators=["sma", "bollinger"])
 ```
+
+---
+
+## Persistent Data Store
+
+`tc.store()` adds a two-level cache on top of the existing in-memory TTL cache: data fetched from any provider is written to a `tradechart_FetchData/` folder and reloaded automatically in future sessions, eliminating redundant network requests.
+
+### Set the store location
+
+Call `tc.store()` once with a filesystem path. The folder `tradechart_FetchData/` is created there automatically.
+
+```python
+import tradechart as tc
+
+tc.store("/data/myproject")      # absolute path
+tc.store(".")                    # current working directory
+tc.store("~/market_data")        # tilde expansion supported
+```
+
+### Pre-fetch tickers and groups
+
+After setting the path, call `tc.store()` again on subsequent lines listing any combination of individual ticker symbols, named sector group keys, or plain lists. An optional duration string as the last argument controls the fetch window (defaults to `"1mo"`).
+
+```python
+tc.store("AAPL")                           # single ticker, default duration (1mo)
+tc.store("AAPL", "MSFT", "NVDA", "3mo")   # three tickers for 3 months
+tc.store("mag7", "6mo")                    # named group — fetches all 7 tickers
+tc.store("tech", "finance", "1y")          # two named groups for 1 year
+tc.store(tc.SECTOR_GROUPS["crypto"], "3mo") # list passed directly
+```
+
+Any valid `SECTOR_GROUPS` key (`"mag7"`, `"tech"`, `"finance"`, `"energy"`, …) is expanded to its full ticker list automatically.
+
+### How it works
+
+Once a store path is configured, every call to `chart()`, `data()`, `export()`, `compare()`, or `heatmap()` checks the disk store before touching the network:
+
+1. **In-memory cache** — sub-millisecond, TTL-based (existing behaviour).
+2. **Disk store** — CSV file per `(ticker, duration)` pair, persists across sessions.
+3. **Live provider chain** — yfinance → TradingView → Stooq. On success the result is written to disk automatically.
+
+```python
+tc.store("/data/myproject")
+tc.store("AAPL", "MSFT", "mag7", "3mo")   # fetch once, write to disk
+
+# Later — same session or a completely new one:
+tc.chart("AAPL", "3mo")                   # served from disk, no network call
+tc.data("MSFT", "3mo")                    # same
+tc.heatmap(tc.SECTOR_GROUPS["mag7"], "3mo") # same
+```
+
+### Clearing stored data
+
+```python
+tc.clear_cache()           # flush in-memory cache only (default)
+tc.clear_cache(disk=True)  # also delete all CSV files in tradechart_FetchData/
+```
+
+### Store folder layout
+
+```
+/data/myproject/
+└── tradechart_FetchData/
+    ├── AAPL_3mo.csv
+    ├── MSFT_3mo.csv
+    ├── NVDA_3mo.csv
+    └── ...
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `*args` | `str \| list \| tuple` | A single path string **or** any mix of ticker symbols, named sector group keys, and/or lists — optionally ending with a duration string. |
+| `duration` | `str` (keyword) | Fallback duration when none is provided in `*args`. Default `"1mo"`. |
+
+**Returns:** the `tradechart_FetchData/` `Path` when setting the store; `None` when pre-fetching.
 
 ---
 
@@ -90,12 +165,14 @@ If one or more tickers in the group fail to fetch data, they are **skipped with 
 | `tc.theme(name)` | Set chart colour theme |
 | `tc.watermark(enabled)` | Toggle the TRADELY logo watermark |
 | `tc.config(**kwargs)` | Batch-set multiple global options at once |
+| `tc.store(path)` | Set persistent data-store directory |
+| `tc.store(ticker, ...)` | Pre-fetch and persist tickers / groups |
 | `tc.chart(...)` | Fetch data and render a chart image |
 | `tc.compare(...)` | Overlay multiple tickers on one chart |
 | `tc.heatmap(...)` | Render a performance heatmap for a ticker group |
 | `tc.data(...)` | Fetch raw OHLCV data as a DataFrame |
 | `tc.export(...)` | Export market data to CSV / JSON / XLSX |
-| `tc.clear_cache()` | Flush the in-memory data cache |
+| `tc.clear_cache(disk=False)` | Flush in-memory cache; optionally wipe disk store |
 | `tc.SECTOR_GROUPS` | Dict of 14 pre-defined ticker lists (sectors, indices, crypto, …) |
 
 ---
@@ -205,7 +282,7 @@ Tile sizes use a **squarified treemap** algorithm to minimise wasted space while
 
 ## `tc.SECTOR_GROUPS` — Pre-defined Ticker Lists
 
-A dictionary of curated ticker groups ready to pass into `tc.heatmap()`, `tc.compare()`, `tc.chart()`, or `tc.export()`.
+A dictionary of curated ticker groups ready to pass into `tc.heatmap()`, `tc.compare()`, `tc.chart()`, `tc.store()`, or `tc.export()`.
 
 ```python
 import tradechart as tc
@@ -370,10 +447,15 @@ The TRADELY logo is stamped in the bottom-left corner of every chart by default.
 ## `tc.clear_cache()` — Flush Data Cache
 
 ```python
-tc.clear_cache()
+tc.clear_cache()            # flush in-memory cache only
+tc.clear_cache(disk=True)   # also wipe all CSVs in tradechart_FetchData/
 ```
 
-Clears all in-memory cached market data, forcing the next fetch to go to the network. Useful after a TTL has not yet expired but you need fresh data (e.g. during live market hours).
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `disk` | `bool` | `False` | When `True`, deletes all CSV files in the disk store (the folder is kept). Has no effect if no store path has been set. |
+
+Clears in-memory cached market data, forcing the next fetch to check the disk store (or go to the network if no store is configured). Useful during live market hours when TTL has not yet expired but you need a fresh quote.
 
 ---
 
@@ -428,18 +510,22 @@ TradeChart tries providers in priority order and falls back automatically on fai
 
 | Priority | Provider | Requires | Notes |
 |---|---|---|---|
-| 1 | **yfinance** | Included by default | Primary source. Covers stocks, ETFs, indices, crypto, forex. |
+| 0 | **Disk store** | `tc.store(path)` called once | Fastest — served from local CSV, no network. Persists across sessions. |
+| 1 | **yfinance** | Included by default | Primary live source. Covers stocks, ETFs, indices, crypto, forex. |
 | 2 | **TradingView** | `pip install TradeChart[tradingview]` | Tried if yfinance returns empty or fails. Attempts multiple exchanges automatically (`NASDAQ`, `NYSE`, `AMEX`, `CRYPTO`, `FX`). |
 | 3 | **Stooq** | Nothing — free CSV endpoint | Final fallback. No API key required. Duration mapped to a rolling date range. |
 
-If all three providers fail, a `DataFetchError` is raised with a list of each provider's error message.
+If all live providers fail and no disk data exists, a `DataFetchError` is raised with a list of each provider's error message.
 
 ---
 
 ## Notes
 
-**Caching**  
-Fetched data is cached in-memory for `cache_ttl` seconds (default 300 s / 5 minutes). All subsequent calls with the same ticker and duration within that window are served from cache. Call `tc.clear_cache()` to force a re-fetch, or set `tc.config(cache_ttl=0)` to disable caching entirely.
+**Persistent disk store**  
+When `tc.store()` is configured, every successful live fetch is written to `tradechart_FetchData/` as a CSV file. Subsequent fetches — even in a new Python session — read from disk rather than the network. Use `tc.clear_cache(disk=True)` to wipe stored files and force a fresh fetch from providers.
+
+**In-memory caching**  
+Fetched data is also cached in-memory for `cache_ttl` seconds (default 300 s / 5 minutes). All subsequent calls with the same ticker and duration within that window are served from the memory cache. Call `tc.clear_cache()` to force re-evaluation (disk store is still checked before going to the network). Set `tc.config(cache_ttl=0)` to disable the memory cache entirely.
 
 **File collision handling**  
 By default (`overwrite=False`), TradeChart appends a counter to avoid overwriting existing files: `chart.png` → `chart_1.png` → `chart_2.png`. Set `tc.config(overwrite=True)` to overwrite silently.
@@ -471,7 +557,7 @@ All TradeChart exceptions inherit from `TradeChartError`.
 | `InvalidTickerError` | The ticker string fails validation (too long, invalid characters) |
 | `RenderError` | Chart rendering fails (e.g. empty dataset after cleaning) |
 | `OutputError` | The chart cannot be saved (e.g. permission denied) |
-| `ConfigError` | An unknown key is passed to `tc.config()` |
+| `ConfigError` | An unknown key is passed to `tc.config()`, or `tc.store()` is called with tickers before a path is set |
 
 ```python
 import tradechart as tc

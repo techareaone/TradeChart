@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import threading
-from typing import Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from tradechart.data.store import DiskStore
 
 TerminalMode = Literal["full", "on_done", "none"]
 ThemeName = Literal["dark", "light", "classic"]
@@ -32,6 +36,7 @@ class Settings:
                     inst._fig_width: int = 14
                     inst._fig_height: int = 7
                     inst._cache_ttl: int = 300
+                    inst._disk_store: DiskStore | None = None
                     cls._instance = inst
         return cls._instance
 
@@ -134,6 +139,20 @@ class Settings:
     def cache_ttl(self, value: int) -> None:
         with self._mode_lock:
             self._cache_ttl = max(0, int(value))
+
+    # -- disk store -----------------------------------------------------------
+
+    @property
+    def disk_store(self) -> DiskStore | None:
+        with self._mode_lock:
+            return self._disk_store
+
+    def set_store_path(self, path: Path) -> None:
+        """Create (or update) the persistent disk store at *path*."""
+        from tradechart.data.store import DiskStore  # lazy import avoids cycle
+        store = DiskStore(path)
+        with self._mode_lock:
+            self._disk_store = store
 
 
 def get_settings() -> Settings:

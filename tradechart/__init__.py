@@ -15,6 +15,19 @@ tc.heatmap(...)         — Render a performance heatmap for a ticker group.
 tc.data(...)            — Fetch raw OHLCV data as a DataFrame.
 tc.export(...)          — Export market data to CSV / JSON / XLSX.
 tc.clear_cache()        — Flush the in-memory data cache.
+tc.store(path)          — Set persistent data-store directory.
+tc.store(ticker, ...)   — Pre-fetch and persist tickers / groups.
+
+Persistent store
+----------------
+``tc.store()`` enables a two-level cache: in-memory (TTL-based) **and**
+on-disk (permanent across sessions).  Set the location once, then list any
+tickers or named groups to pre-fetch them:
+
+>>> tc.store("/data/myproject")        # creates /data/myproject/tradechart_FetchData/
+>>> tc.store("AAPL", "MSFT", "1mo")   # fetch & persist
+>>> tc.store("mag7", "3mo")           # fetch every ticker in the Mag-7 group
+>>> tc.chart("AAPL", "1mo")           # served from disk — no network request
 
 Sector groups
 -------------
@@ -54,6 +67,7 @@ Example
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional, Union
 import threading
@@ -71,11 +85,13 @@ from tradechart.utils.exceptions import (
     OutputError,
     ConfigError,
 )
+from tradechart.utils.validation import VALID_DURATIONS
 
-__version__ = "2.1.2"
+__version__ = "2.2.0"
 __all__ = [
     "terminal", "theme", "watermark", "config",
     "chart", "compare", "heatmap", "data", "export", "clear_cache",
+    "store",
     "SECTOR_GROUPS",
 ]
 
@@ -354,6 +370,153 @@ def export(
     )
 
 
-def clear_cache() -> None:
-    """Flush the in-memory data cache."""
+def clear_cache(disk: bool = False) -> None:
+    """Flush the in-memory data cache.
+
+    Parameters
+    ----------
+    disk : bool
+        If ``True``, also delete all CSV files in the persistent disk store
+        (the folder itself is kept).  Defaults to ``False``.
+    """
     _get_engine().clear_cache()
+    if disk:
+        ds = get_settings().disk_store
+        if ds is not None:
+            ds.clear()
+
+
+# ── Persistent store ─────────────────────────────────────────────────────────
+
+def _is_store_path(s: str) -> bool:
+    """Heuristic: does *s* look like a filesystem path rather than a ticker?"""
+    p = Path(s).expanduser()
+    if p.is_absolute():
+        return True
+    if s.startswith(".") or s.startswith("~"):
+        return True
+    if os.sep in s or "/" in s:
+        return True
+    if len(s) > 20:
+        return True
+    if p.is_dir():
+        return True
+    return False
+
+
+def store(*args: Union[str, list, tuple], duration: str = "1mo") -> Path | None:
+    """Set the data-store directory, or pre-fetch and persist tickers/groups.
+
+    **Setting the store location** — pass a single filesystem path::
+
+        tc.store("/data/myproject")
+        tc.store(".")                  # current directory
+        tc.store("~/tradechart_data")
+
+    This creates ``<path>/tradechart_FetchData/`` and enables automatic
+    disk persistence for every subsequent fetch (``chart()``, ``data()``,
+    ``export()``, …).  Data already stored on disk is reused without hitting
+    the network, even across Python sessions.
+
+    **Pre-fetching tickers** — once a store path is set, pass any combination
+    of individual symbols, named sector groups, or plain lists::
+
+        tc.store("AAPL")                          # single ticker, default duration
+        tc.store("AAPL", "MSFT", "NVDA", "3mo")  # three tickers for 3 months
+        tc.store("mag7", "6mo")                   # named group → all 7 tickers
+        tc.store(tc.SECTOR_GROUPS["tech"], "1y")  # list passed directly
+
+    If the last positional argument is a valid duration string it is used as
+    the fetch window; otherwise *duration* (default ``"1mo"``) applies.
+
+    Named groups (``"mag7"``, ``"tech"``, ``"finance"``, …) are resolved via
+    :data:`SECTOR_GROUPS` — each member ticker is fetched individually.
+
+    Parameters
+    ----------
+    *args : str | list | tuple
+        A single path string **or** any mix of ticker symbols, named sector
+        group keys, and/or lists of tickers, optionally ending with a duration.
+    duration : str
+        Fallback duration when none is specified in *args*.
+        ``"1d"`` ``"5d"`` ``"1mo"`` ``"3mo"`` ``"6mo"`` ``"1y"`` ``"2y"``
+        ``"5y"`` ``"10y"`` ``"max"``
+
+    Returns
+    -------
+    pathlib.Path or None
+        The ``tradechart_FetchData`` folder path when setting the store;
+        ``None`` when pre-fetching.
+
+    Examples
+    --------
+    >>> import tradechart as tc
+    >>> tc.store("/home/user/market_data")          # configure store
+    >>> tc.store("AAPL", "MSFT", "1mo")             # pre-fetch two tickers
+    >>> tc.store("mag7", "3mo")                     # pre-fetch Magnificent 7
+    >>> tc.chart("AAPL", "1mo")                     # served from disk, no network
+    """
+    if not args:
+        raise ConfigError("store() requires at least one argument.")
+
+    # ── Case 1: set / change the store path ──────────────────────────────────
+    if len(args) == 1 and isinstance(args[0], str) and _is_store_path(args[0]):
+        path = Path(args[0]).expanduser().resolve()
+        get_settings().set_store_path(path)
+        store_dir = get_settings().disk_store.root  # type: ignore[union-attr]
+        _log = _get_engine()._log  # type: ignore[attr-defined]
+        _log.summary(f"✓ Data store set → {store_dir}")
+        return store_dir
+
+    # ── Case 2: pre-fetch tickers/groups ─────────────────────────────────────
+    if get_settings().disk_store is None:
+        raise ConfigError(
+            "No store path configured. Call tc.store('/path/to/dir') first."
+        )
+
+    # Determine duration: if the last arg is a known duration string, use it.
+    ticker_args: tuple
+    if args and isinstance(args[-1], str) and args[-1] in VALID_DURATIONS:
+        dur = args[-1]
+        ticker_args = args[:-1]
+    else:
+        dur = duration
+        ticker_args = args
+
+    # Resolve all tickers (flatten lists, expand named groups).
+    all_tickers: list[str] = []
+    for arg in ticker_args:
+        if isinstance(arg, (list, tuple)):
+            all_tickers.extend(str(t) for t in arg)
+        elif isinstance(arg, str):
+            if arg in SECTOR_GROUPS:
+                all_tickers.extend(SECTOR_GROUPS[arg])
+            else:
+                all_tickers.append(arg)
+
+    if not all_tickers:
+        raise ConfigError("store() received no recognisable ticker symbols.")
+
+    engine = _get_engine()
+    fetched: list[str] = []
+    failed: list[str] = []
+    for ticker in all_tickers:
+        try:
+            engine.fetch_data(ticker, dur)
+            fetched.append(ticker)
+        except Exception as exc:
+            failed.append(f"{ticker}: {exc}")
+
+    if failed:
+        import warnings
+        warnings.warn(
+            f"store(): could not fetch {len(failed)} ticker(s):\n"
+            + "\n".join(f"  • {e}" for e in failed),
+            stacklevel=2,
+        )
+
+    engine._log.summary(  # type: ignore[attr-defined]
+        f"✓ Stored {len(fetched)} ticker(s) for {dur} "
+        f"→ {get_settings().disk_store.root}"  # type: ignore[union-attr]
+    )
+    return None
