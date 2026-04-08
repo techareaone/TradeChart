@@ -100,6 +100,7 @@ MAX_QUEUE_SIZE = max(1, int(os.getenv("MAX_QUEUE_SIZE", "20")))
 tc.theme(os.getenv("THEME", "dark"))
 tc.terminal(os.getenv("TERMINAL", "none"))
 tc.watermark(os.getenv("WATERMARK", "True").lower() == "true")
+tc.store(DATA_DIR)  # persist fetched data to TradeChartBot_Data/tradechart_FetchData/
 
 # ============================================================
 # BUILT-IN SECTOR GROUPS (mirroring tc.SECTOR_GROUPS)
@@ -565,7 +566,8 @@ async def cmd_heatmap(
 # ============================================================
 
 @client.tree.command(name="clearcache", description="MOD ONLY: Clear the chart data cache")
-async def cmd_clearcache(interaction: discord.Interaction) -> None:
+@app_commands.describe(disk="Also wipe the persistent disk store and force a full re-fetch (default: False)")
+async def cmd_clearcache(interaction: discord.Interaction, disk: bool = False) -> None:
     if interaction.guild is None:
         await interaction.response.send_message("This bot only works in servers.", ephemeral=True)
         return
@@ -574,8 +576,9 @@ async def cmd_clearcache(interaction: discord.Interaction) -> None:
         await interaction.response.send_message("Only mods can clear the cache.", ephemeral=True)
         return
 
-    tc.clear_cache()
-    await interaction.response.send_message(EMOJI_GREEN + " Cache cleared.", ephemeral=True)
+    tc.clear_cache(disk=disk)
+    label = EMOJI_GREEN + " Cache cleared (memory + disk store)." if disk else EMOJI_GREEN + " Memory cache cleared."
+    await interaction.response.send_message(label, ephemeral=True)
 
 
 # ============================================================
@@ -929,8 +932,12 @@ async def cmd_help(interaction: discord.Interaction) -> None:
         inline=False,
     )
     embed.add_field(
-        name="/clearcache  (mod only)",
-        value="Clear cached chart data to force a fresh fetch.",
+        name="/clearcache [disk]  (mod only)",
+        value=(
+            "Clear cached chart data. Without `disk:True` only the in-memory cache is cleared "
+            "and stored data on disk is still reused. Use `disk:True` to wipe the disk store "
+            "and force a full re-fetch from the network."
+        ),
         inline=False,
     )
     embed.add_field(

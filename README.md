@@ -1,4 +1,4 @@
-# TradeChart — Library Edition v2.2.0
+# TradeChart — Library Edition v2.2.1
 
 **Python → Financial Charts**  
 Generate production-quality candlestick, line, area, OHLC, Heikin-Ashi, and performance heatmap charts from code.  
@@ -69,11 +69,20 @@ Any valid `SECTOR_GROUPS` key (`"mag7"`, `"tech"`, `"finance"`, `"energy"`, …)
 
 ### How it works
 
-Once a store path is configured, every call to `chart()`, `data()`, `export()`, `compare()`, or `heatmap()` checks the disk store before touching the network:
+Once a store path is configured, every call to `chart()`, `data()`, `export()`, `compare()`, or `heatmap()` uses a three-level lookup before touching the network:
 
 1. **In-memory cache** — sub-millisecond, TTL-based (existing behaviour).
-2. **Disk store** — CSV file per `(ticker, duration)` pair, persists across sessions.
-3. **Live provider chain** — yfinance → TradingView → Stooq. On success the result is written to disk automatically.
+2. **Disk store (fresh)** — if the stored file is younger than the bar-resolution threshold, it is served as-is. No network call.
+3. **Disk store (stale) + live fetch** — if the stored file is older than the threshold, the library fetches the current window from a live provider to get the missing bars, then **merges** those new rows on top of the stored history. Historical bars are never discarded or re-requested. The merged result is written back to disk and served.
+
+The staleness threshold matches the resolution of the data so charts are never more than one bar behind:
+
+| Duration | Bar resolution | Refreshes after |
+|---|---|---|
+| `"1d"`, `"5d"` | 5 / 15-min bars | 4 hours |
+| `"1mo"`, `"3mo"`, `"6mo"` | Daily bars | 24 hours |
+| `"1y"`, `"2y"`, `"5y"` | Weekly bars | 7 days |
+| `"10y"`, `"max"` | Monthly bars | 30 days |
 
 ```python
 tc.store("/data/myproject")
@@ -82,7 +91,10 @@ tc.store("AAPL", "MSFT", "mag7", "3mo")   # fetch once, write to disk
 # Later — same session or a completely new one:
 tc.chart("AAPL", "3mo")                   # served from disk, no network call
 tc.data("MSFT", "3mo")                    # same
-tc.heatmap(tc.SECTOR_GROUPS["mag7"], "3mo") # same
+
+# After 24 hours (daily bars): only the new day's bar is fetched and merged
+# in — the months of stored history are kept and reused as-is
+tc.chart("AAPL", "3mo")                   # delta fetch + merge, then cached
 ```
 
 ### Clearing stored data
@@ -510,7 +522,7 @@ TradeChart tries providers in priority order and falls back automatically on fai
 
 | Priority | Provider | Requires | Notes |
 |---|---|---|---|
-| 0 | **Disk store** | `tc.store(path)` called once | Fastest — served from local CSV, no network. Persists across sessions. |
+| 0 | **Disk store** | `tc.store(path)` called once | Served from local CSV when fresh. When stale, only the missing bars are fetched from a live provider and merged on top — historical rows are never re-requested. |
 | 1 | **yfinance** | Included by default | Primary live source. Covers stocks, ETFs, indices, crypto, forex. |
 | 2 | **TradingView** | `pip install TradeChart[tradingview]` | Tried if yfinance returns empty or fails. Attempts multiple exchanges automatically (`NASDAQ`, `NYSE`, `AMEX`, `CRYPTO`, `FX`). |
 | 3 | **Stooq** | Nothing — free CSV endpoint | Final fallback. No API key required. Duration mapped to a rolling date range. |
@@ -522,7 +534,7 @@ If all live providers fail and no disk data exists, a `DataFetchError` is raised
 ## Notes
 
 **Persistent disk store**  
-When `tc.store()` is configured, every successful live fetch is written to `tradechart_FetchData/` as a CSV file. Subsequent fetches — even in a new Python session — read from disk rather than the network. Use `tc.clear_cache(disk=True)` to wipe stored files and force a fresh fetch from providers.
+When `tc.store()` is configured, every successful live fetch is written to `tradechart_FetchData/` as a CSV file. On subsequent requests the library checks whether the stored data is fresh enough (based on bar resolution — 24 hours for daily bars, 4 hours for intraday, etc.). If fresh, it is served directly with no network call. If stale, only the most recent bars are fetched from a live provider and merged on top of the stored history — historical rows are never discarded or re-fetched. Use `tc.clear_cache(disk=True)` to wipe stored files and force a full re-fetch.
 
 **In-memory caching**  
 Fetched data is also cached in-memory for `cache_ttl` seconds (default 300 s / 5 minutes). All subsequent calls with the same ticker and duration within that window are served from the memory cache. Call `tc.clear_cache()` to force re-evaluation (disk store is still checked before going to the network). Set `tc.config(cache_ttl=0)` to disable the memory cache entirely.

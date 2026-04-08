@@ -5,11 +5,26 @@ from __future__ import annotations
 import time
 from typing import Sequence
 
+import pandas as pd
+
 from tradechart.config.logger import get_logger
 from tradechart.config.settings import get_settings
 from tradechart.data.models import MarketData
 from tradechart.data.provider_base import BaseProvider
 from tradechart.utils.exceptions import DataFetchError
+
+
+def _merge(stored: pd.DataFrame, fresh: pd.DataFrame) -> pd.DataFrame:
+    """Merge stored history with freshly-fetched rows.
+
+    Historical rows from *stored* are preserved as-is.  Any row whose
+    timestamp also appears in *fresh* is overwritten by the fresh value
+    (handles end-of-day corrections / partial bars).  Rows that exist only
+    in *fresh* (new bars) are appended.  The result is sorted by date.
+    """
+    combined = pd.concat([stored, fresh])
+    combined = combined[~combined.index.duplicated(keep="last")]
+    return combined.sort_index()
 
 
 class _Cache:
@@ -49,25 +64,8 @@ class DataFetcher:
         self._cache = _Cache()
         self._log = get_logger()
 
-    def fetch(self, ticker: str, duration: str) -> MarketData:
-        # 1 — in-memory cache (fastest)
-        cached = self._cache.get(ticker, duration)
-        if cached is not None:
-            self._log.detail("Cache hit for %s/%s", ticker, duration)
-            self._log.summary(f"✓ Data loaded from cache ({cached.provider})")
-            return cached
-
-        # 2 — persistent disk store (avoids network for already-fetched data)
-        disk_store = get_settings().disk_store
-        if disk_store is not None:
-            disk_data = disk_store.load(ticker, duration)
-            if disk_data is not None:
-                self._log.detail("Disk store hit for %s/%s", ticker, duration)
-                self._log.summary(f"✓ Data loaded from disk store ({len(disk_data.df)} rows)")
-                self._cache.put(disk_data)  # promote to memory cache
-                return disk_data
-
-        # 3 — live provider chain
+    def _fetch_live(self, ticker: str, duration: str) -> MarketData:
+        """Try each provider in order and return the first successful result."""
         errors: list[str] = []
         for provider in self._providers:
             self._log.section(f"Trying provider: {provider.name}")
@@ -79,10 +77,6 @@ class DataFetcher:
                     errors.append(msg)
                     continue
                 data.clean().downsample()
-                self._cache.put(data)
-                # 4 — persist to disk store for future sessions
-                if disk_store is not None:
-                    disk_store.save(data)
                 self._log.detail("Fetched %d rows from %s", len(data.df), provider.name)
                 self._log.summary(f"✓ Data fetched via {provider.name} ({len(data.df)} rows)")
                 return data
@@ -90,11 +84,58 @@ class DataFetcher:
                 msg = f"{provider.name} failed: {exc}"
                 self._log.detail(msg)
                 errors.append(msg)
-
         raise DataFetchError(
             f"All data providers failed for {ticker}/{duration}.\n"
             + "\n".join(f"  • {e}" for e in errors)
         )
+
+    def fetch(self, ticker: str, duration: str) -> MarketData:
+        # 1 — in-memory cache (fastest)
+        cached = self._cache.get(ticker, duration)
+        if cached is not None:
+            self._log.detail("Cache hit for %s/%s", ticker, duration)
+            self._log.summary(f"✓ Data loaded from cache ({cached.provider})")
+            return cached
+
+        disk_store = get_settings().disk_store
+
+        # 2 — persistent disk store
+        disk_data: MarketData | None = None
+        if disk_store is not None:
+            disk_data = disk_store.load(ticker, duration)
+            if disk_data is not None and not disk_store.is_stale(ticker, duration):
+                # Data is fresh — serve directly, no network call needed
+                self._log.detail("Disk store hit for %s/%s", ticker, duration)
+                self._log.summary(f"✓ Data loaded from disk store ({len(disk_data.df)} rows)")
+                self._cache.put(disk_data)
+                return disk_data
+            # disk_data may be stale (or absent) — fall through to live fetch,
+            # then merge the new rows on top of the stored history
+
+        # 3 — live provider chain (only fetches what the provider returns for
+        #     this duration, typically the most recent N bars)
+        fresh = self._fetch_live(ticker, duration)
+
+        # 4 — merge fresh rows onto stored history, then persist
+        if disk_store is not None:
+            if disk_data is not None:
+                merged_df = _merge(disk_data.df, fresh.df)
+                result = MarketData(
+                    ticker=ticker, duration=duration,
+                    provider=fresh.provider, df=merged_df,
+                )
+                self._log.detail(
+                    "Merged disk (%d rows) + live (%d rows) → %d rows",
+                    len(disk_data.df), len(fresh.df), len(merged_df),
+                )
+            else:
+                result = fresh
+            disk_store.save(result)
+            self._cache.put(result)
+            return result
+
+        self._cache.put(fresh)
+        return fresh
 
     def clear_cache(self) -> None:
         """Flush the in-memory data cache."""

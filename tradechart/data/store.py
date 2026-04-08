@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pandas as pd
 
 from tradechart.data.models import MarketData
+
+# Maximum age (seconds) for a stored file before it is considered stale and
+# re-fetched from a live provider.  Keyed by the user-facing duration string;
+# the value matches the bar resolution so a daily-bar file never goes more
+# than one trading day without refreshing.
+_MAX_AGE: dict[str, int] = {
+    "1d":  4  * 3_600,        # intraday (5-min bars)  → 4 hours
+    "5d":  4  * 3_600,        # intraday (15-min bars) → 4 hours
+    "1mo": 24 * 3_600,        # daily bars             → 1 day
+    "3mo": 24 * 3_600,        # daily bars             → 1 day
+    "6mo": 24 * 3_600,        # daily bars             → 1 day
+    "1y":  7  * 24 * 3_600,   # weekly bars            → 1 week
+    "2y":  7  * 24 * 3_600,
+    "5y":  7  * 24 * 3_600,
+    "10y": 30 * 24 * 3_600,   # monthly bars           → 30 days
+    "max": 30 * 24 * 3_600,
+}
 
 
 class DiskStore:
@@ -52,8 +70,25 @@ class DiskStore:
         """Return True if data for this (ticker, duration) pair is on disk."""
         return self._file_path(ticker, duration).exists()
 
+    def is_stale(self, ticker: str, duration: str) -> bool:
+        """Return True if the stored file is older than the bar-resolution threshold.
+
+        A fresh file is served as-is.  A stale file still holds valid
+        historical rows — the caller should merge fresh provider data on top
+        rather than discarding it.
+        """
+        path = self._file_path(ticker, duration)
+        if not path.exists():
+            return True
+        max_age = _MAX_AGE.get(duration, 24 * 3_600)
+        return time.time() - path.stat().st_mtime > max_age
+
     def load(self, ticker: str, duration: str) -> MarketData | None:
-        """Load a previously stored dataset.  Returns *None* on any error."""
+        """Load a previously stored dataset regardless of age.
+
+        Returns *None* only if the file is missing or unreadable.  Staleness
+        is a separate concern handled by :meth:`is_stale`.
+        """
         path = self._file_path(ticker, duration)
         if not path.exists():
             return None

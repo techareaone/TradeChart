@@ -87,7 +87,7 @@ from tradechart.utils.exceptions import (
 )
 from tradechart.utils.validation import VALID_DURATIONS
 
-__version__ = "2.2.0"
+__version__ = "2.2.1"
 __all__ = [
     "terminal", "theme", "watermark", "config",
     "chart", "compare", "heatmap", "data", "export", "clear_cache",
