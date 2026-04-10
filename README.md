@@ -1,4 +1,4 @@
-# TradeChart — Library Edition v2.2.1
+# TradeChart — Library Edition v2.3.1
 
 **Python → Financial Charts**  
 Generate production-quality candlestick, line, area, OHLC, Heikin-Ashi, and performance heatmap charts from code.  
@@ -403,8 +403,8 @@ tc.config(
 | `theme` | `str` | `"dark"` | `"dark"`, `"light"`, `"classic"` | Chart colour theme. See [Themes](#themes). |
 | `watermark` | `bool` | `True` | `True`, `False` | Show or hide the TRADELY logo in the bottom-left corner of charts. |
 | `overwrite` | `bool` | `False` | `True`, `False` | `False` — append `_1`, `_2`, … to the filename if it already exists. `True` — overwrite the existing file silently. |
-| `dpi` | `int` | `150` | `50`–`600` | Output resolution in dots per inch. Higher values produce larger, sharper files. |
-| `fig_size` | `tuple[int, int]` | `(14, 7)` | Any valid `(width, height)` in inches | Matplotlib figure size. Increase for wide monitors or presentations. |
+| `dpi` | `int` | `100` | `50`–`600` | Output resolution in dots per inch. Higher values produce larger, sharper files. |
+| `fig_size` | `tuple[int, int]` | `(12, 6)` | Any valid `(width, height)` in inches | Matplotlib figure size. Increase for wide monitors or presentations. |
 | `cache_ttl` | `int` | `300` | Any positive integer (seconds) | How long fetched data is kept in memory. `0` effectively disables caching. |
 
 ---
@@ -555,7 +555,7 @@ The `"heikin_ashi"` chart type converts standard OHLC data to Heikin-Ashi candle
 When `mplfinance` is installed (`pip install TradeChart[mplfinance]`), candlestick and Heikin-Ashi charts use it for higher-quality rendering. Otherwise a pure-matplotlib fallback is used automatically — no configuration required.
 
 **Output resolution**  
-Default DPI is 150, producing a ~2100 × 1050 px image at the default figure size. Increase with `tc.config(dpi=300)` for print-quality output.
+Default DPI is 100, producing a ~1200 × 600 px image at the default figure size — well under 300 KB for all supported formats. Increase with `tc.config(dpi=200)` for sharper output, or `tc.config(dpi=300)` for print quality.
 
 ---
 

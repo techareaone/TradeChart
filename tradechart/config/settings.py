@@ -32,9 +32,9 @@ class Settings:
                     inst._theme: ThemeName = "dark"
                     inst._watermark_enabled: bool = True
                     inst._overwrite: bool = False
-                    inst._dpi: int = 150
-                    inst._fig_width: int = 14
-                    inst._fig_height: int = 7
+                    inst._dpi: int = 100
+                    inst._fig_width: int = 12
+                    inst._fig_height: int = 6
                     inst._cache_ttl: int = 300
                     inst._disk_store: DiskStore | None = None
                     cls._instance = inst

@@ -345,8 +345,15 @@ class HeatmapRenderer:
             stamp_logo(fig, provider=provider)
 
         out_file = output_path.with_suffix(f".{fmt}")
-        fig.savefig(out_file, dpi=settings.dpi,
-                    facecolor=fig.get_facecolor(), bbox_inches="tight")
+        pil_kwargs: dict = {}
+        if fmt == "png":
+            pil_kwargs = {"compress_level": 6, "optimize": True}
+        elif fmt in ("jpg", "jpeg", "webp"):
+            pil_kwargs = {"quality": 82, "optimize": True}
+        save_kwargs: dict = {"dpi": settings.dpi, "facecolor": fig.get_facecolor(), "bbox_inches": "tight"}
+        if pil_kwargs:
+            save_kwargs["pil_kwargs"] = pil_kwargs
+        fig.savefig(out_file, **save_kwargs)
         plt.close(fig)
         log.detail("Saved heatmap → %s", out_file)
         return out_file

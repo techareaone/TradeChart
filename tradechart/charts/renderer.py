@@ -131,9 +131,9 @@ class ChartRenderer:
 
         # Wicks — two batch vlines calls instead of N individual plot() calls
         ax_price.vlines(x_arr[up_mask],   lows[up_mask],   highs[up_mask],
-                        colors=theme.up_color,   linewidth=0.6)
+                        colors=theme.up_color,   linewidth=0.5)
         ax_price.vlines(x_arr[~up_mask],  lows[~up_mask],  highs[~up_mask],
-                        colors=theme.down_color, linewidth=0.6)
+                        colors=theme.down_color, linewidth=0.5)
 
         # Bodies — two batch bar calls instead of N individual bar() calls
         body_w = max(0.4, min(0.8, 60 / max(len(df), 1)))
@@ -186,8 +186,7 @@ class ChartRenderer:
             stamp_logo(fig, provider=meta.provider)
 
         out_file = out.with_suffix(f".{fmt}")
-        fig.savefig(out_file, dpi=get_settings().dpi,
-                    facecolor=fig.get_facecolor(), bbox_inches="tight")
+        self._savefig(fig, out_file, fmt, get_settings().dpi)
         plt.close(fig)
         log.detail("Saved candlestick chart → %s", out_file)
         return out_file
@@ -255,8 +254,7 @@ class ChartRenderer:
             stamp_logo(fig, provider=meta.provider)
 
         out_file = out.with_suffix(f".{fmt}")
-        fig.savefig(str(out_file), dpi=settings.dpi,
-                    bbox_inches="tight", facecolor=fig.get_facecolor())
+        self._savefig(fig, out_file, fmt, settings.dpi)
         plt.close(fig)
         get_logger().detail("Saved mplfinance chart → %s", out_file)
         return out_file
@@ -321,8 +319,7 @@ class ChartRenderer:
             stamp_logo(fig, provider=meta.provider)
 
         out_file = out.with_suffix(f".{fmt}")
-        fig.savefig(out_file, dpi=settings.dpi,
-                    facecolor=fig.get_facecolor(), bbox_inches="tight")
+        self._savefig(fig, out_file, fmt, settings.dpi)
         plt.close(fig)
         get_logger().detail("Saved OHLC chart → %s", out_file)
         return out_file
@@ -352,8 +349,7 @@ class ChartRenderer:
             stamp_logo(fig, provider=meta.provider)
 
         out_file = out.with_suffix(f".{fmt}")
-        fig.savefig(out_file, dpi=settings.dpi,
-                    facecolor=fig.get_facecolor(), bbox_inches="tight")
+        self._savefig(fig, out_file, fmt, settings.dpi)
         plt.close(fig)
         get_logger().detail("Saved line chart → %s", out_file)
         return out_file
@@ -384,8 +380,7 @@ class ChartRenderer:
             stamp_logo(fig, provider=meta.provider)
 
         out_file = out.with_suffix(f".{fmt}")
-        fig.savefig(out_file, dpi=settings.dpi,
-                    facecolor=fig.get_facecolor(), bbox_inches="tight")
+        self._savefig(fig, out_file, fmt, settings.dpi)
         plt.close(fig)
         get_logger().detail("Saved area chart → %s", out_file)
         return out_file
@@ -438,6 +433,19 @@ class ChartRenderer:
         if not theme.spine_visible:
             for spine in ax.spines.values():
                 spine.set_visible(False)
+
+    @staticmethod
+    def _savefig(fig: plt.Figure, out_file: Path, fmt: str, dpi: int) -> None:
+        """Save *fig* with format-specific compression to keep file sizes small."""
+        pil_kwargs: dict = {}
+        if fmt == "png":
+            pil_kwargs = {"compress_level": 6, "optimize": True}
+        elif fmt in ("jpg", "jpeg", "webp"):
+            pil_kwargs = {"quality": 82, "optimize": True}
+        kwargs: dict = {"dpi": dpi, "facecolor": fig.get_facecolor(), "bbox_inches": "tight"}
+        if pil_kwargs:
+            kwargs["pil_kwargs"] = pil_kwargs
+        fig.savefig(out_file, **kwargs)
 
     @staticmethod
     def _set_date_labels(ax: plt.Axes, df: pd.DataFrame, theme: Theme) -> None:
