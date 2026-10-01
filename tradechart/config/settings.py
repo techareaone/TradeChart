@@ -11,9 +11,26 @@ if TYPE_CHECKING:
 
 TerminalMode = Literal["full", "on_done", "none"]
 ThemeName = Literal["dark", "light", "classic"]
+ChartEngine = Literal["native", "mplfinance"]
+FontName = Literal["sans", "serif", "mono"]
 
 _VALID_MODES: frozenset[str] = frozenset({"full", "on_done", "none"})
 _VALID_THEMES: frozenset[str] = frozenset({"dark", "light", "classic"})
+_VALID_ENGINES: frozenset[str] = frozenset({"native", "mplfinance"})
+_FONT_ALIASES: dict[str, FontName] = {
+    "sans": "sans",
+    "sans-serif": "sans",
+    "sans serif": "sans",
+    "serif": "serif",
+    "mono": "mono",
+    "monospace": "mono",
+}
+# Matplotlib ships these faces, so charts render with no extra font install.
+_FONT_FACES: dict[FontName, tuple[str, str]] = {
+    "sans": ("DejaVu Sans", "DejaVu Sans Mono"),
+    "serif": ("DejaVu Serif", "DejaVu Sans Mono"),
+    "mono": ("DejaVu Sans Mono", "DejaVu Sans Mono"),
+}
 
 
 class Settings:
@@ -30,6 +47,8 @@ class Settings:
                     inst._mode_lock = threading.Lock()
                     inst._terminal_mode: TerminalMode = "on_done"
                     inst._theme: ThemeName = "dark"
+                    inst._chart_engine: ChartEngine = "native"
+                    inst._font: FontName = "sans"
                     inst._watermark_enabled: bool = True
                     inst._overwrite: bool = False
                     inst._dpi: int = 100
@@ -73,6 +92,47 @@ class Settings:
             )
         with self._mode_lock:
             self._theme = value  # type: ignore[assignment]
+
+    # -- chart engine ---------------------------------------------------------
+
+    @property
+    def chart_engine(self) -> ChartEngine:
+        with self._mode_lock:
+            return self._chart_engine
+
+    @chart_engine.setter
+    def chart_engine(self, value: str) -> None:
+        cleaned = value.strip().lower()
+        if cleaned not in _VALID_ENGINES:
+            raise ValueError(
+                f"Invalid chart engine '{value}'. "
+                f"Allowed: {', '.join(sorted(_VALID_ENGINES))}"
+            )
+        with self._mode_lock:
+            self._chart_engine = cleaned  # type: ignore[assignment]
+
+    # -- font -----------------------------------------------------------------
+
+    @property
+    def font(self) -> FontName:
+        with self._mode_lock:
+            return self._font
+
+    @font.setter
+    def font(self, value: str) -> None:
+        cleaned = _FONT_ALIASES.get(value.strip().lower())
+        if cleaned is None:
+            raise ValueError(
+                f"Invalid font '{value}'. "
+                f"Allowed: {', '.join(sorted(set(_FONT_ALIASES)))}"
+            )
+        with self._mode_lock:
+            self._font = cleaned
+
+    def font_faces(self) -> tuple[str, str]:
+        """Return ``(label face, figure face)`` for the selected font."""
+        with self._mode_lock:
+            return _FONT_FACES[self._font]
 
     # -- watermark ------------------------------------------------------------
 

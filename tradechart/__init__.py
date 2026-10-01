@@ -87,7 +87,7 @@ from tradechart.utils.exceptions import (
 )
 from tradechart.utils.validation import VALID_DURATIONS
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 __all__ = [
     "terminal", "theme", "watermark", "config",
     "chart", "compare", "heatmap", "data", "export", "clear_cache",
@@ -153,6 +153,8 @@ def config(**kwargs) -> dict:
     dpi : int               — output resolution (50–600)
     fig_size : tuple[int,int] — figure dimensions in inches
     cache_ttl : int         — data cache time-to-live in seconds
+    engine : str            — ``"native"`` (default) or ``"mplfinance"``
+    font : str              — ``"sans"`` (default), ``"serif"``, or ``"mono"``
 
     Example
     -------
@@ -167,6 +169,8 @@ def config(**kwargs) -> dict:
         "dpi":       lambda v: setattr(s, "dpi", v),
         "fig_size":  lambda v: setattr(s, "fig_size", v),
         "cache_ttl": lambda v: setattr(s, "cache_ttl", v),
+        "engine":    lambda v: setattr(s, "chart_engine", v),
+        "font":      lambda v: setattr(s, "font", v),
     }
     for key, value in kwargs.items():
         setter = dispatch.get(key)
@@ -185,6 +189,8 @@ def config(**kwargs) -> dict:
         "dpi": s.dpi,
         "fig_size": s.fig_size,
         "cache_ttl": s.cache_ttl,
+        "engine": s.chart_engine,
+        "font": s.font,
     }
 
 

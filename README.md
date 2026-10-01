@@ -1,4 +1,4 @@
-# TradeChart — Library Edition v2.4.0
+# TradeChart — Library Edition v2.5.0
 
 **Python → Financial Charts**  
 Generate production-quality candlestick, line, area, OHLC, Heikin-Ashi, and performance heatmap charts from code.  
@@ -17,7 +17,7 @@ pip install TradeChart
 | Extra | Installs | Benefit |
 |---|---|---|
 | `TradeChart[tradingview]` | `tvDatafeed` | TradingView as a fallback data provider |
-| `TradeChart[mplfinance]` | `mplfinance` | Higher-quality candlestick rendering |
+| `TradeChart[mplfinance]` | `mplfinance` | Optional candlestick backend. The default engine is native. Opt in with `tc.config(engine="mplfinance")`. |
 | `TradeChart[xlsx]` | `openpyxl` | Excel `.xlsx` export support |
 | `TradeChart[all]` | All of the above | Everything |
 
@@ -406,6 +406,8 @@ tc.config(
 | `dpi` | `int` | `100` | `50`–`600` | Output resolution in dots per inch. Higher values produce larger, sharper files. |
 | `fig_size` | `tuple[int, int]` | `(12, 6)` | Any valid `(width, height)` in inches | Matplotlib figure size. Increase for wide monitors or presentations. |
 | `cache_ttl` | `int` | `300` | Any positive integer (seconds) | How long fetched data is kept in memory. `0` effectively disables caching. |
+| `engine` | `str` | `"native"` | `"native"`, `"mplfinance"` | Drawing entry point. `"native"` is the default sleek engine. `"mplfinance"` keeps the optional candlestick backend for `"candle"` and `"heikin_ashi"`. |
+| `font` | `str` | `"sans"` | `"sans"`, `"serif"`, `"mono"` | Typeface. `"sans"` is sans-serif and is used when this is omitted. `"serif"` and `"mono"` are the other built-in choices. |
 
 ---
 
@@ -439,9 +441,9 @@ tc.theme("classic")
 
 | Name | Background | Candle colours | Spine |
 |---|---|---|---|
-| `"dark"` | `#1e1e2f` (dark navy) | Green `#26a69a` / Red `#ef5350` | Hidden |
-| `"light"` | `#ffffff` (white) | Green `#26a69a` / Red `#ef5350` | Hidden |
-| `"classic"` | `#f5f5dc` (parchment) | Dark green `#2e7d32` / Dark red `#c62828` | Visible |
+| `"dark"` | `#0e1117` | Green `#3dd68c` / Red `#f07178` | Hidden |
+| `"light"` | `#f4f6f8` | Green `#1a9f6b` / Red `#e24b4b` | Hidden |
+| `"classic"` | `#f3efe2` (parchment) | Green `#1f7a3a` / Red `#a32020` | Visible |
 
 ---
 
@@ -551,11 +553,19 @@ The global settings singleton and engine initialisation are protected by locks. 
 **Heikin-Ashi**  
 The `"heikin_ashi"` chart type converts standard OHLC data to Heikin-Ashi candles during rendering only. The cached source data and any DataFrame returned by `tc.data()` are never modified.
 
-**mplfinance**  
-When `mplfinance` is installed (`pip install TradeChart[mplfinance]`), candlestick and Heikin-Ashi charts use it for higher-quality rendering. Otherwise a pure-matplotlib fallback is used automatically — no configuration required.
+**Rendering**  
+`tc.chart()`, `tc.compare()`, and `tc.heatmap()` draw through the native engine (`render_chart`, `render_comparison`, and the heatmap renderer). Candles are two vector collections — one for wicks, one for bodies — the figure is positioned once, and the file is written in a single pass. That is lighter than a general-purpose chart stack, and it is the look in the examples below.
+
+`mplfinance` is still supported. Install `TradeChart[mplfinance]` and select it when you want that backend for candlestick and Heikin-Ashi charts:
+
+```python
+tc.config(engine="mplfinance")
+```
+
+Line, area, OHLC, comparison, and heatmap charts stay on the native engine. Required dependencies are unchanged: `matplotlib`, `pandas`, `numpy`, and `yfinance`. `tvDatafeed`, `mplfinance`, and `openpyxl` remain optional extras.
 
 **Output resolution**  
-Default DPI is 100, producing a ~1200 × 600 px image at the default figure size — well under 300 KB for all supported formats. Increase with `tc.config(dpi=200)` for sharper output, or `tc.config(dpi=300)` for print quality.
+Default DPI is 100, producing a ~1200 × 600 px image at the default figure size. Increase with `tc.config(dpi=200)` for sharper output, or `tc.config(dpi=300)` for print quality.
 
 ---
 
@@ -582,12 +592,6 @@ except DataFetchError as e:
 except RenderError as e:
     print(f"Render error: {e}")
 ```
-
----
-
-## Example Charts
-<img width="2081" height="1039" alt="image" src="https://github.com/user-attachments/assets/b93f79e6-a135-4de8-993d-ee13071fe791" />
-<img width="2081" height="1039" alt="image" src="https://github.com/user-attachments/assets/b0755b35-b21c-4b27-8faa-c57e13892dad" />
 
 ---
 

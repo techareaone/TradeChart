@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     import matplotlib.figure
 
 from tradechart.config.logger import get_logger
+from tradechart.config.settings import get_settings
 
 _LOGO_URL = "https://doc.tradely.dev/images/watermark_tradely.png"
 _CACHE_DIR = Path.home() / ".tradechart" / "cache"
@@ -92,16 +93,20 @@ def stamp_logo(fig: "matplotlib.figure.Figure", provider: str | None = None) -> 
         get_logger().detail("Logo: skipped (unavailable)")
         return
 
-    logo_ax = fig.add_axes([0.008, 0.040, 0.05, 0.05], anchor="SW")
-    logo_ax.imshow(logo, aspect="equal", interpolation="lanczos")
+    logo_ax = fig.add_axes([0.012, 0.012, 0.034, 0.034], anchor="SW")
+    logo_ax.set_in_layout(False)
+    logo_ax.set_zorder(10)
+    logo_ax.imshow(logo, aspect="equal", interpolation="bilinear")
     logo_ax.axis("off")
 
     # Add data source text if provider is specified
     if provider:
-        text_ax = fig.add_axes([0.008, 0.008, 0.1, 0.015], anchor="SW")
+        text_ax = fig.add_axes([0.050, 0.010, 0.28, 0.022], anchor="SW")
+        text_ax.set_in_layout(False)
+        text_ax.set_zorder(10)
         text_ax.text(0, 0.5, f"Source: {provider}",
-                    fontsize=7, color="#999999", va="center",
-                    fontfamily="monospace")
+                    fontsize=7, color="#8b97a8", va="center",
+                    fontfamily=get_settings().font_faces()[0])
         text_ax.axis("off")
 
     get_logger().detail("Logo: stamped on chart%s", f" with source '{provider}'" if provider else "")

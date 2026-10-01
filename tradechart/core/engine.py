@@ -4,19 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from tradechart.config.logger import get_logger
 from tradechart.config.settings import get_settings
 from tradechart.data.fetcher import DataFetcher
+from tradechart.data.groups import SECTOR_GROUPS
 from tradechart.data.models import MarketData
 from tradechart.data.provider_base import BaseProvider
-from tradechart.charts.renderer import ChartRenderer
-from tradechart.charts.themes import get_theme
-from tradechart.charts.watermark import stamp_logo
+from tradechart.charts.renderer import render_chart, render_comparison
 from tradechart.providers.yfinance_provider import YFinanceProvider
 from tradechart.providers.tradingview_provider import TradingViewProvider
 from tradechart.providers.stooq_provider import StooqProvider
@@ -35,12 +31,39 @@ def _default_providers() -> list[BaseProvider]:
     return [YFinanceProvider(), TradingViewProvider(), StooqProvider()]
 
 
+_HEATMAP_HEADINGS = {
+    "mag7": "Mag 7",
+    "sp500_etfs": "S&P 500 sectors",
+    "tech": "Technology",
+    "finance": "Finance",
+    "energy": "Energy",
+    "healthcare": "Healthcare",
+    "consumer_disc": "Consumer discretionary",
+    "consumer_stap": "Consumer staples",
+    "industrials": "Industrials",
+    "realestate": "Real estate",
+    "utilities": "Utilities",
+    "crypto": "Crypto",
+    "indices": "Indices",
+    "commodities": "Commodities",
+}
+
+
+def _heatmap_heading(tickers: list[str]) -> str:
+    """Title a heatmap from a known sector group, otherwise from the symbols."""
+    for key, members in SECTOR_GROUPS.items():
+        if list(members) == list(tickers):
+            return _HEATMAP_HEADINGS.get(key, key.replace("_", " ").title())
+    if len(tickers) <= 4:
+        return "   ".join(tickers)
+    return f"{'   '.join(tickers[:3])}   +{len(tickers) - 3}"
+
+
 class Engine:
     """Single entry-point used by the public API functions."""
 
     def __init__(self) -> None:
         self._fetcher = DataFetcher(_default_providers())
-        self._renderer = ChartRenderer()
         self._log = get_logger()
 
     # ── tc.chart() ───────────────────────────────────────────────────────
@@ -96,7 +119,7 @@ class Engine:
 
         self._log.section("Rendering chart")
         try:
-            result_path = self._renderer.render(
+            result_path = render_chart(
                 data=data, chart_type=chart_type, output_path=out_path,
                 fmt=fmt, indicators=ind_list, show_volume=show_volume,
             )
@@ -133,51 +156,26 @@ class Engine:
         filename = output_name or f"compare_{'_'.join(tickers)}_{duration}.{fmt}"
         out_path = self._safe_path(out_dir, sanitize_filename(filename))
 
-        settings = get_settings()
-        theme = get_theme(settings.theme)
-
-        colours = ["#42a5f5", "#ef5350", "#26a69a", "#ffab40",
-                    "#ab47bc", "#ff7043", "#66bb6a", "#ec407a"]
-
-        fig, ax = plt.subplots(figsize=settings.fig_size)
-        fig.patch.set_facecolor(theme.bg_color)
-        ax.set_facecolor(theme.face_color)
-
+        series: list[tuple[str, pd.Series]] = []
         providers: list[str] = []
-        for i, ticker in enumerate(tickers):
+        for ticker in tickers:
             self._log.section(f"Fetching {ticker}")
             data = self._fetcher.fetch(ticker, duration)
             providers.append(data.provider)
-            series = data.df["Close"]
+            close = data.df["Close"]
             if normalise:
-                series = (series / series.iloc[0] - 1) * 100  # percent change
-            ax.plot(series.index, series, color=colours[i % len(colours)],
-                    linewidth=1.4, label=ticker)
-
-        ylabel = "Change (%)" if normalise else "Price"
-        ax.set_title(f"Comparison  •  {duration}",
-                     color=theme.text_color, fontsize=14, fontweight="bold", pad=12)
-        ax.set_ylabel(ylabel, color=theme.text_color, fontsize=11)
-        ax.tick_params(colors=theme.text_color, labelsize=9)
-        ax.grid(True, color=theme.grid_color, linestyle="--", linewidth=0.5, alpha=0.7)
-        ax.legend(loc="upper left", fontsize=9,
-                  facecolor=theme.face_color, edgecolor=theme.grid_color,
-                  labelcolor=theme.text_color)
-        if not theme.spine_visible:
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-
-        fig.autofmt_xdate(rotation=30)
-        fig.tight_layout(pad=1.5)
+                close = (close / close.iloc[0] - 1) * 100
+            series.append((ticker, close))
 
         provider_str = ", ".join(sorted(set(providers))) if providers else None
-        if settings.watermark_enabled:
-            stamp_logo(fig, provider=provider_str)
-
-        out_file = out_path.with_suffix(f".{fmt}")
-        fig.savefig(out_file, dpi=settings.dpi,
-                    facecolor=fig.get_facecolor(), bbox_inches="tight")
-        plt.close(fig)
+        out_file = render_comparison(
+            series=series,
+            duration=duration,
+            normalise=normalise,
+            output_path=out_path,
+            fmt=fmt,
+            provider=provider_str,
+        )
 
         self._log.summary(f"✓ Comparison chart saved → {out_file}")
         self._log.flush_summary()
@@ -252,7 +250,7 @@ class Engine:
             perf=perf,
             prices=prices,
             market_caps=market_caps,
-            label=label,
+            label=_heatmap_heading(valid_tickers),
             duration=duration,
             output_path=out_path,
             fmt=fmt,

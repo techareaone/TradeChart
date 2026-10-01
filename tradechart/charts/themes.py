@@ -19,45 +19,53 @@ class Theme:
     line_color: str
     volume_alpha: float
     spine_visible: bool
+    muted_color: str
+    accent_color: str
 
 
 DARK = Theme(
     name="dark",
-    bg_color="#1e1e2f",
-    face_color="#1e1e2f",
-    grid_color="#2e2e44",
-    text_color="#c8c8d4",
-    up_color="#26a69a",
-    down_color="#ef5350",
-    line_color="#42a5f5",
-    volume_alpha=0.35,
+    bg_color="#0e1117",
+    face_color="#0e1117",
+    grid_color="#243044",
+    text_color="#e8edf5",
+    up_color="#3dd68c",
+    down_color="#f07178",
+    line_color="#7aa2f7",
+    volume_alpha=0.55,
     spine_visible=False,
+    muted_color="#8b97a8",
+    accent_color="#7aa2f7",
 )
 
 LIGHT = Theme(
     name="light",
-    bg_color="#ffffff",
-    face_color="#fafafa",
-    grid_color="#e0e0e0",
-    text_color="#333333",
-    up_color="#2e7d32",
-    down_color="#c62828",
-    line_color="#1565c0",
-    volume_alpha=0.30,
+    bg_color="#f4f6f8",
+    face_color="#f4f6f8",
+    grid_color="#e1e6ee",
+    text_color="#1a1f29",
+    up_color="#1a9f6b",
+    down_color="#e24b4b",
+    line_color="#3d6bf5",
+    volume_alpha=0.5,
     spine_visible=False,
+    muted_color="#5c6b7e",
+    accent_color="#3d6bf5",
 )
 
 CLASSIC = Theme(
     name="classic",
-    bg_color="#f5f5dc",
-    face_color="#fffef2",
-    grid_color="#d4d4aa",
-    text_color="#2c2c2c",
-    up_color="#006400",
-    down_color="#8b0000",
-    line_color="#00008b",
-    volume_alpha=0.25,
+    bg_color="#f3efe2",
+    face_color="#f7f4ea",
+    grid_color="#e0d8c4",
+    text_color="#2a261e",
+    up_color="#1f7a3a",
+    down_color="#a32020",
+    line_color="#1d4e89",
+    volume_alpha=0.45,
     spine_visible=True,
+    muted_color="#6d6456",
+    accent_color="#1d4e89",
 )
 
 _THEMES: dict[str, Theme] = {

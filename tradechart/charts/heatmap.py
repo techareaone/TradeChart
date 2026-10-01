@@ -21,6 +21,7 @@ import matplotlib.patches as mpatches
 
 from tradechart.config.logger import get_logger
 from tradechart.config.settings import get_settings
+from tradechart.charts.renderer import _draw_header, save_figure
 from tradechart.charts.themes import get_theme
 from tradechart.charts.watermark import stamp_logo
 from tradechart.utils.exceptions import RenderError
@@ -29,7 +30,7 @@ from tradechart.utils.exceptions import RenderError
 # The canvas spans [0, fig_aspect] × [0, 1], and since fig_aspect = fw/fh the
 # x and y data units are identical in physical size (both = fh inches/unit).
 # A single constant therefore produces visually uniform gaps on all four sides.
-_TILE_GAP = 0.006
+_TILE_GAP = 0.008
 
 
 # ── Colour map: deep-red → slate-neutral → deep-green ───────────────────────
@@ -37,13 +38,11 @@ _TILE_GAP = 0.006
 _HEATMAP_CMAP = mcolors.LinearSegmentedColormap.from_list(
     "tradechart_heatmap",
     [
-        "#8b1a1a",  # deep red   (large loss)
-        "#c62828",
-        "#ef5350",  # light red
-        "#546e7a",  # slate-grey (near zero)
-        "#26a69a",  # teal-green
-        "#00897b",
-        "#004d40",  # deep green (large gain)
+        "#8f2430",
+        "#f07178",
+        "#3a4454",
+        "#3dd68c",
+        "#147a4d",
     ],
     N=256,
 )
@@ -238,9 +237,10 @@ class HeatmapRenderer:
         log.detail("Heatmap layout: %s (%d tiles)", weight_note, len(layout))
 
         # ── Figure ───────────────────────────────────────────────────────────
-        fig, ax = plt.subplots(figsize=(fw, fh))
+        fig, ax = plt.subplots(figsize=(fw, fh), dpi=settings.dpi)
         fig.patch.set_facecolor(theme.bg_color)
         ax.set_facecolor(theme.bg_color)
+        fig.subplots_adjust(left=0.055, right=0.915, top=0.80, bottom=0.14)
         ax.set_xlim(0, fig_aspect)
         ax.set_ylim(0, 1.0)
         ax.set_aspect("auto")
@@ -254,13 +254,18 @@ class HeatmapRenderer:
             price = prices.get(ticker)
             color = _tile_color(pct, vrange)
 
-            rect = mpatches.Rectangle(
+            tile_w = (tx1 - tx0) - 2 * _TILE_GAP
+            tile_h = (ty1 - ty0) - 2 * _TILE_GAP
+            radius = min(0.012, tile_w * 0.08, tile_h * 0.08)
+            rect = mpatches.FancyBboxPatch(
                 (tx0 + _TILE_GAP, ty0 + _TILE_GAP),
-                (tx1 - tx0) - 2 * _TILE_GAP,
-                (ty1 - ty0) - 2 * _TILE_GAP,
+                tile_w,
+                tile_h,
+                boxstyle=f"round,pad=0,rounding_size={radius:.4f}",
                 facecolor=color,
                 edgecolor="none",
                 linewidth=0,
+                mutation_aspect=1,
                 zorder=2,
             )
             ax.add_patch(rect)
@@ -294,17 +299,20 @@ class HeatmapRenderer:
                 ty_t = cy
                 ty_p = ty_pr = None
 
+            label_face, figure_face = settings.font_faces()
             ax.text(cx, ty_t, ticker,
                     ha="center", va="center",
                     fontsize=fs_ticker, fontweight="bold",
-                    color="white", zorder=3, clip_on=True)
+                    color="white", zorder=3, clip_on=True,
+                    fontfamily=label_face)
 
             if show_pct and ty_p is not None:
                 sign = "+" if pct >= 0 else ""
                 ax.text(cx, ty_p, f"{sign}{pct:.2f}%",
                         ha="center", va="center",
                         fontsize=fs_pct, color="white", alpha=0.92,
-                        zorder=3, clip_on=True)
+                        zorder=3, clip_on=True,
+                        fontfamily=figure_face)
 
             if show_price and ty_pr is not None:
                 price_str = (
@@ -315,13 +323,15 @@ class HeatmapRenderer:
                 ax.text(cx, ty_pr, price_str,
                         ha="center", va="center",
                         fontsize=fs_price, color="white", alpha=0.72,
-                        zorder=3, clip_on=True)
+                        zorder=3, clip_on=True,
+                        fontfamily=figure_face)
 
         # ── Title ─────────────────────────────────────────────────────────────
-        subtitle = f"market-cap weighted" if has_caps else "equal weight"
-        ax.set_title(
-            f"{label}  •  {duration}  •  Performance Heatmap  ({subtitle})",
-            color=theme.text_color, fontsize=12, fontweight="bold", pad=12,
+        weight_note = "market-cap weighted" if has_caps else "equal weight"
+        _draw_header(
+            fig, theme,
+            title=label,
+            subtitle=f"{duration}   ·   performance   ·   {weight_note}",
         )
 
         # ── Colour-bar legend ──────────────────────────────────────────────────
@@ -334,26 +344,23 @@ class HeatmapRenderer:
             sm, ax=ax, orientation="horizontal",
             fraction=0.025, pad=0.03, aspect=50,
         )
-        cbar.set_label("% Change", color=theme.text_color, fontsize=9)
-        cbar.ax.tick_params(colors=theme.text_color, labelsize=8)
-        for spine in cbar.ax.spines.values():
-            spine.set_visible(False)
-
-        fig.tight_layout(pad=1.5)
+        cbar.set_label("% change", color=theme.muted_color, fontsize=8)
+        _label_face, figure_face = settings.font_faces()
+        try:
+            cbar.ax.tick_params(
+                colors=theme.muted_color, labelsize=8, length=0, labelfontfamily=figure_face,
+            )
+        except TypeError:
+            cbar.ax.tick_params(colors=theme.muted_color, labelsize=8, length=0)
+        cbar.ax.xaxis.label.set_fontfamily(figure_face)
+        cbar.outline.set_visible(False)
 
         if settings.watermark_enabled:
             stamp_logo(fig, provider=provider)
 
         out_file = output_path.with_suffix(f".{fmt}")
-        pil_kwargs: dict = {}
-        if fmt == "png":
-            pil_kwargs = {"compress_level": 6, "optimize": True}
-        elif fmt in ("jpg", "jpeg", "webp"):
-            pil_kwargs = {"quality": 82, "optimize": True}
-        save_kwargs: dict = {"dpi": settings.dpi, "facecolor": fig.get_facecolor(), "bbox_inches": "tight"}
-        if pil_kwargs:
-            save_kwargs["pil_kwargs"] = pil_kwargs
-        fig.savefig(out_file, **save_kwargs)
+        with plt.rc_context({"svg.fonttype": "none", "savefig.bbox": None}):
+            save_figure(fig, out_file, fmt, settings.dpi)
         plt.close(fig)
         log.detail("Saved heatmap → %s", out_file)
         return out_file
